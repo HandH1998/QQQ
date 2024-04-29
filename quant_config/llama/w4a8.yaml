@@ -24,4 +24,3 @@ gptq:
     nsamples: 128
     wbits: 4
     static_groups: True
-    use_marlin: True
