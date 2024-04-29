@@ -13,7 +13,7 @@ from QQQ.utils import (
     free_memory
 )
 from .models import get_gptq_model_func
-from .qlinear import dynamically_import_QuantLinear
+from .qlinear import QuantLinear
 
 
 @torch.no_grad()
@@ -42,7 +42,6 @@ def apply_gptq(model, q_config, args):
         quantizers,
         bits=gptq_config.wbits,
         group_size=gptq_config.groupsize,
-        is_marlin_format=gptq_config.use_marlin,
     )
     free_memory()
     return model
@@ -55,12 +54,7 @@ def pack_model(
     bits,
     group_size,
     force_layer_back_to_cpu: bool = False,
-    is_marlin_format: bool = False,
 ):
-    QuantLinear = dynamically_import_QuantLinear(
-        bits=bits,
-        disable_marlin=not is_marlin_format,
-    )
     CPU = torch.device("cpu")
     if force_layer_back_to_cpu:
         model.to(CPU)
@@ -73,7 +67,6 @@ def pack_model(
         quantizers,
         bits,
         group_size,
-        use_marlin=is_marlin_format,
     )
     qlayers = find_layers(model, [QuantLinear])
 
@@ -81,21 +74,18 @@ def pack_model(
     for name in pbar:
         pbar.set_description(f"Packing {name}...", refresh=True)
 
-        scale, zero, g_idx, int8_scale = quantizers[name]
+        scale, zero, g_idx, scale_extra = quantizers[name]
         # so far can only pack layer on CPU
         layer_device = qlayers[name].device
         qlayers[name].to(CPU)
-        layers[name], scale, zero, g_idx, int8_scale = (
+        layers[name], scale, zero, g_idx, scale_extra = (
             layers[name].to(CPU),
             scale.to(CPU),
             zero.to(CPU),
             g_idx.to(CPU),
-            int8_scale.to(CPU) if int8_scale is not None else None,
+            scale_extra.to(CPU) if scale_extra is not None else None,
         )
-        if QuantLinear.QUANT_TYPE == "marlin":
-            qlayers[name].pack(layers[name], scale, int8_scale)
-        else:
-            qlayers[name].pack(layers[name], scale, zero, g_idx, int8_scale)
+        qlayers[name].pack(layers[name], scale, scale_extra)
         qlayers[name].to(layer_device)
     print("Model packed.")
 
@@ -105,14 +95,8 @@ def make_quant(
     names,
     bits,
     group_size,
-    use_marlin: bool = False,
     trainable: bool = False,
 ):
-    QuantLinear = dynamically_import_QuantLinear(
-        bits=bits,
-        disable_marlin=not use_marlin,
-    )
-
     if isinstance(module, QuantLinear):
         return
 

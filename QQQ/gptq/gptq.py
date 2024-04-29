@@ -153,6 +153,7 @@ class GPTQ:
                     self.quantizer.zero,
                     self.quantizer.maxq,
                     self.quantizer.sym,
+                    self.quantizer.groupsize,
                 ).flatten()
                 Q1[:, i] = q
                 Losses1[:, i] = (w - q) ** 2 / d**2
@@ -201,18 +202,19 @@ class GPTQ:
         zero = torch.cat(zero, dim=1)
 
         # post int8 quant
-        int8_scale = None
+        scale_extra = None
         if groupsize != self.columns:
-            int8_quantizer = Quantizer()
-            int8_quantizer.configure(
+            quantizer_extra = Quantizer()
+            quantizer_extra.configure(
                 bits=8,
                 perchannel=True,
+                groupsize=-1,
                 sym=True,
                 mse=False,
             )
-            int8_quantizer.find_params(self.layer.weight.data.clone(), weight=True)
-            int8_scale = int8_quantizer.scale
-        return scale, zero, g_idx, int8_scale
+            quantizer_extra.find_params(self.layer.weight.data.clone(), weight=True)
+            scale_extra = quantizer_extra.scale
+        return scale, zero, g_idx, scale_extra
 
     def free(self):
         if DEBUG:

@@ -1,0 +1,9 @@
+*.pyc
+*.log
+*copy.py
+*.so
+.vscode
+tests
+results
+QQQ.egg-info
+build

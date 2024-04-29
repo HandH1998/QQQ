@@ -2,42 +2,50 @@ import torch
 import torch.nn as nn
 
 
-def quantize(x, scale, zero, maxq, sym):
+def quantize(x, scale, zero, maxq, sym, groupsize):
     if maxq < 0:
         return (x > scale / 2).float() * scale + (x < zero / 2).float() * zero
-    if sym:
-        q = torch.clamp(torch.round(x / scale), -maxq, maxq)
-        return scale * q
-    else:
+    if groupsize != -1 or not sym:
         q = torch.clamp(torch.round(x / scale) + zero, 0, maxq)
         return scale * (q - zero)
+    else:
+        q = torch.clamp(torch.round(x / scale), -maxq, maxq)
+        return scale * q
+
 
 class Quantizer(nn.Module):
 
     def __init__(self, shape=1):
         super(Quantizer, self).__init__()
-        self.register_buffer('maxq', torch.tensor(0))
-        self.register_buffer('scale', torch.zeros(shape))
-        self.register_buffer('zero', torch.zeros(shape))
+        self.register_buffer("maxq", torch.tensor(0))
+        self.register_buffer("scale", torch.zeros(shape))
+        self.register_buffer("zero", torch.zeros(shape))
 
     def configure(
         self,
-        bits, perchannel=False, sym=True, 
-        mse=False, norm=2.4, grid=100, maxshrink=.8,
-        trits=False
+        bits,
+        perchannel=False,
+        sym=True,
+        groupsize=-1,
+        mse=False,
+        norm=2.4,
+        grid=100,
+        maxshrink=0.8,
+        trits=False,
     ):
-        if sym:
-            self.maxq = torch.tensor(2 ** (bits - 1) - 1)
-        else:
+        if groupsize != -1 or not sym:
             self.maxq = torch.tensor(2 ** bits - 1)
+        else:
+            self.maxq = torch.tensor(2 ** (bits - 1) - 1)
         self.perchannel = perchannel
+        self.groupsize = groupsize
         self.sym = sym
         self.mse = mse
         self.norm = norm
         self.grid = grid
-        self.maxshrink = maxshrink 
+        self.maxshrink = maxshrink
         if trits:
-            self.maxq = torch.tensor(-1) 
+            self.maxq = torch.tensor(-1)
 
     def find_params(self, x, weight=False):
         dev = x.device
@@ -72,27 +80,32 @@ class Quantizer(nn.Module):
         xmax[tmp] = +1
 
         if self.maxq < 0:
-          self.scale = xmax
-          self.zero = xmin
+            self.scale = xmax
+            self.zero = xmin
         else:
-          
-          if self.sym:
-              self.scale = xmax / self.maxq
-            #   self.zero = torch.full_like(self.scale, (self.maxq + 1) / 2)
-              self.zero = torch.zeros_like(self.scale)
-          else:
-              self.scale = (xmax - xmin) / self.maxq
-              self.zero = torch.round(-xmin / self.scale)
+            if self.groupsize != -1 or not self.sym:
+                self.scale = (xmax - xmin) / self.maxq
+                if self.sym:
+                    self.zero = torch.full_like(self.scale, (self.maxq + 1) / 2)
+                else:
+                    self.zero = torch.round(-xmin / self.scale)
+            else:
+                self.scale = xmax / self.maxq
+                self.zero = torch.zeros_like(self.scale)
 
         if self.mse:
-            best = torch.full([x.shape[0]], float('inf'), device=dev)
+            best = torch.full([x.shape[0]], float("inf"), device=dev)
             for i in range(int(self.maxshrink * self.grid)):
-                p = 1 - i / self.grid 
+                p = 1 - i / self.grid
                 xmin1 = p * xmin
                 xmax1 = p * xmax
-                scale1 = (xmax1 - xmin1) / self.maxq if not self.sym else xmax1 / self.maxq
+                scale1 = (
+                    (xmax1 - xmin1) / self.maxq if (self.groupsize != -1 or not self.sym) else xmax1 / self.maxq
+                )
                 zero1 = torch.round(-xmin1 / scale1) if not self.sym else self.zero
-                q = quantize(x, scale1.unsqueeze(1), zero1.unsqueeze(1), self.maxq, self.sym)
+                q = quantize(
+                    x, scale1.unsqueeze(1), zero1.unsqueeze(1), self.maxq, self.sym, self.groupsize
+                )
                 q -= x
                 q.abs_()
                 q.pow_(self.norm)
@@ -120,14 +133,14 @@ class Quantizer(nn.Module):
             self.zero = self.zero.reshape((1, -1, 1, 1))
         if len(shape) == 3:
             self.scale = self.scale.reshape((1, 1, -1))
-            self.zero = self.zero.reshape((1, 1, -1)) 
+            self.zero = self.zero.reshape((1, 1, -1))
         if len(shape) == 2:
             self.scale = self.scale.unsqueeze(0)
             self.zero = self.zero.unsqueeze(0)
 
     def quantize(self, x):
         if self.ready():
-            return quantize(x, self.scale, self.zero, self.maxq, self.sym)
+            return quantize(x, self.scale, self.zero, self.maxq, self.sym, self.groupsize)
         return x
 
     def enabled(self):

@@ -73,6 +73,7 @@ def gptq_llama_func(model, dataloader, dev, args):
                     perchannel=True,
                     sym=args.sym,
                     mse=args.mse,
+                    groupsize=args.groupsize,
                 )
 
             def add_batch(name):
@@ -96,7 +97,7 @@ def gptq_llama_func(model, dataloader, dev, args):
             for name in subset:
                 print(i, name)
                 print("Quantizing ...")
-                scale, zero, g_idx, int8_scale = gptq[name].fasterquant(
+                scale, zero, g_idx, scale_extra = gptq[name].fasterquant(
                     percdamp=args.percdamp,
                     groupsize=args.groupsize,
                     actorder=args.act_order,
@@ -106,7 +107,7 @@ def gptq_llama_func(model, dataloader, dev, args):
                     scale,
                     zero,
                     g_idx,
-                    int8_scale
+                    scale_extra
                 )
                 gptq[name].free()
 
