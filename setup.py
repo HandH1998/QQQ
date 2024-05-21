@@ -8,7 +8,7 @@ setup(
             name='QQQ._CUDA',
             sources=[
                 'csrc/pybind.cpp',
-                'csrc/w4a8/w4a8_gemm.cu'
+                'csrc/qqq_gemm.cu'
             ],
         ),
     ],

@@ -20,7 +20,7 @@
 
 #include <torch/extension.h>
 
-void w4a8_gemm(
+void qqq_gemm(
   const torch::Tensor& A,
   const torch::Tensor& B,
         torch::Tensor& C,

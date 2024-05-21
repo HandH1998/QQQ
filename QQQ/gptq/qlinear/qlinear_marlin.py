@@ -19,7 +19,7 @@ from logging import getLogger
 import numpy as np
 import torch
 import torch.nn as nn
-from QQQ._CUDA import w4a8_gemm
+from QQQ._CUDA import qqq_gemm
 
 
 logger = getLogger(__name__)
@@ -40,7 +40,7 @@ def mul(A, B, C, D, s1, s2, s3, workspace, thread_k=-1, thread_n=-1, sms=-1, max
     @sms: number of SMs to use for the kernel (can usually be left as auto -1)
     @max_par: maximum number of batch 64 problems to solve in parallel for large input sizes
     """
-    w4a8_gemm(A, B, C, D, s1, s2, s3, workspace, thread_k, thread_n, sms, max_par)
+    qqq_gemm(A, B, C, D, s1, s2, s3, workspace, thread_k, thread_n, sms, max_par)
 
 
 class QuantLinear(nn.Module):

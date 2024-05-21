@@ -145,9 +145,7 @@ inline __device__ float int32_to_float(int h) {
   return res;
 }
 
-// Efficiently dequantize an int32 value into a full B-fragment of 4 int8 values.
-// We mostly follow the strategy in the link below, with some small changes:
-// https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h
+// Efficiently dequantize an int32 value into a full B-fragment of 4 int8 values for weight per channel dequant.
 __device__ inline FragB dequant_per_channel(int q) {
   static constexpr int MASK = 0xf0f0f0f0;
   FragB frag_b;
@@ -168,6 +166,7 @@ __device__ inline uint32_t lop3(uint32_t a, uint32_t b, uint32_t c) {
 }
 
 // TODO(HandH1998): optimize dequant_per_group, as it doesn't have a very good performance for now
+// Efficiently dequantize an int32 value into a full B-fragment of 4 int8 values for weight per group dequant.
 __device__ inline FragB dequant_per_group(int q, FragS_GROUP& frag_s, int i) {
   // convert 4 int8 to 4 half
   static constexpr uint32_t LO = 0x000f000f;
@@ -850,7 +849,7 @@ const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6
 const int ERR_PROB_SHAPE = 1;
 const int ERR_KERN_SHAPE = 2;
 
-int w4a8_cuda(
+int qqq_cuda(
   const void* A,
   const void* B,
         void* C, // int32 reduce buffer
@@ -946,7 +945,7 @@ int w4a8_cuda(
   return ret;
 }
 
-void w4a8_gemm(
+void qqq_gemm(
   const torch::Tensor& A,
   const torch::Tensor& B,
         torch::Tensor& C,
@@ -975,28 +974,7 @@ void w4a8_gemm(
   if (s3.dtype() != torch::kFloat16)
      AT_ERROR("s3 dtype must be float16, but got ", s3.dtype(), ".");
   int dev = A.get_device();
-  int err;
-  if (s3.numel() == 0) {
-    err = w4a8_cuda(
-    A.data_ptr(),
-    B.data_ptr(),
-    C.data_ptr(),
-    D.data_ptr(),
-    s1.data_ptr(),
-    s2.data_ptr(),
-    nullptr,
-    prob_m, prob_n, prob_k,
-    workspace.data_ptr(),
-    groupsize,
-    dev,
-    at::cuda::getCurrentCUDAStream(dev),
-    thread_k,
-    thread_n,
-    sms,
-    max_par
-  );
-  } else {
-    err = w4a8_cuda(
+  int err = qqq_cuda(
     A.data_ptr(),
     B.data_ptr(),
     C.data_ptr(),
@@ -1014,7 +992,6 @@ void w4a8_gemm(
     sms,
     max_par
   );
-  }
 
   if (err == ERR_PROB_SHAPE) {
     AT_ERROR(
