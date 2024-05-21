@@ -22,7 +22,8 @@ from QQQ.utils import (
     MultiChoice,
     get_max_length,
     prepare_for_inference,
-    free_memory
+    free_memory,
+    save_json,
 )
 
 logger = logging.getLogger("QQQ")
@@ -46,15 +47,15 @@ def eval_model(model, tokenizer, args):
             testenc = testloader.input_ids
 
         nsamples = testenc.numel() // max_length
-   
+
         nlls = []
         for i in tqdm(range(nsamples)):
-            batched_inps = testenc[
-                :, (i * max_length) : ((i + 1) * max_length)
-            ].to("cuda:0")
-            batched_labels = testenc[
-                :, (i * max_length) : ((i + 1) * max_length)
-            ].to("cuda:0")
+            batched_inps = testenc[:, (i * max_length) : ((i + 1) * max_length)].to(
+                "cuda:0"
+            )
+            batched_labels = testenc[:, (i * max_length) : ((i + 1) * max_length)].to(
+                "cuda:0"
+            )
             loss = model(batched_inps, labels=batched_labels).loss
             neg_log_likelihood = loss.float() * max_length
             nlls.append(neg_log_likelihood)
@@ -77,7 +78,13 @@ def eval_model(model, tokenizer, args):
     # eval other datasets
     if args.tasks != "":
         task_names = pattern_match(args.tasks.split(","), tasks.TaskManager().all_tasks)
-        lm = HFLM(pretrained=model, backend='causal', device='cuda', batch_size=args.batch_size, tokenizer=tokenizer)
+        lm = HFLM(
+            pretrained=model,
+            backend="causal",
+            device="cuda",
+            batch_size=args.batch_size,
+            tokenizer=tokenizer,
+        )
         t_results = simple_evaluate(
             lm,
             tasks=task_names,
@@ -145,7 +152,7 @@ def main():
     del model
     del tokenizer
     free_memory()
-    
+
     # load model and apply smooth scales
     model, tokenizer = build_model_and_tokenizer(
         args.model_path, args.tokenizer_path, args.dtype, args.device
@@ -158,6 +165,11 @@ def main():
     # save quantized model
     model.save_pretrained(args.save_path)
     tokenizer.save_pretrained(args.save_path)
+    # save quant config
+    save_json(
+        {"group_size": q_config["gptq"]["groupsize"]},
+        os.path.join(args.save_path, "quant_config.json"),
+    )
 
     # eval model
     if args.eval_model:

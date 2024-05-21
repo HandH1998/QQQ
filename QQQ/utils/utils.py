@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from easydict import EasyDict
 import random
+import json
 
 DTYPE_MAP = {
     "float16": torch.float16,
@@ -57,6 +58,10 @@ def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+
+def save_json(config, file_path):
+    with open(file_path, 'w') as json_file:
+        json.dump(config, json_file, indent=4)
 
 
 

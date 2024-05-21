@@ -33,9 +33,6 @@ def apply_gptq(model, q_config, args):
 
     quantizers = gptq_func(model, dataloader, device, gptq_config)
     torch.save(quantizers, os.path.join(args.save_path, "quantizers.pth"))
-    model_save_path = os.path.join(args.save_path, 'after_gptq')
-    os.makedirs(model_save_path, exist_ok=True)
-    model.save_pretrained(model_save_path)
 
     pack_model(
         model,

@@ -9,5 +9,5 @@ from .model_utils import (
     prepare_for_inference,
     free_memory
 )
-from .utils import str2torch_dtype, str2torch_device, parse_config, setup_seed
+from .utils import str2torch_dtype, str2torch_device, parse_config, setup_seed, save_json
 from .eval_utils import MultiChoice, update_results, pattern_match
