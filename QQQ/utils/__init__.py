@@ -5,9 +5,8 @@ from .model_utils import (
     find_layers,
     recurse_getattr,
     recurse_setattr,
-    get_max_length,
     prepare_for_inference,
-    free_memory
+    get_model_config
 )
-from .utils import str2torch_dtype, str2torch_device, parse_config, setup_seed, save_json
-from .eval_utils import MultiChoice, update_results, pattern_match
+from .utils import str2torch_dtype, str2torch_device, parse_config, setup_seed, save_json, parse_quant_config, free_memory
+from .eval_utils import update_results, pattern_match

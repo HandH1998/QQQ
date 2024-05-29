@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import functools
-import gc
-from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
+from typing import Optional
+from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, PretrainedConfig
 from .utils import str2torch_dtype, str2torch_device
+from accelerate.big_modeling import dispatch_model, infer_auto_device_map, get_balanced_memory
 
 _MODEL_TYPE = {
     "LlamaForCausalLM": "llama",
@@ -12,7 +13,7 @@ _MODEL_TYPE = {
 
 
 def build_model_and_tokenizer(
-    model_path, tokenizer_path, dtype: str, device: str, trust_remote_code: bool = True
+    model_path, tokenizer_path, dtype: str, trust_remote_code: bool = True
 ):
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_path, trust_remote_code=trust_remote_code
@@ -20,11 +21,9 @@ def build_model_and_tokenizer(
     if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
     kwargs = {"torch_dtype": str2torch_dtype(dtype), "device_map": "auto", "attn_implementation": "eager"}
-    # kwargs = {"torch_dtype": str2torch_dtype(dtype), "device_map": "auto"}
     model = AutoModelForCausalLM.from_pretrained(
         model_path, trust_remote_code=trust_remote_code, **kwargs
     )
-    model = model.to(str2torch_device(device))
     return model, tokenizer
 
 
@@ -39,23 +38,26 @@ def get_model_architecture(config):
         f"Supported architectures: {list(_MODEL_TYPE.keys())}"
     )
 
-def get_max_length(model):
-    try:
-        return model.config.n_ctx
-    except AttributeError:
-        # gptneoconfig doesn't have n_ctx apparently
-        return model.config.max_position_embeddings
     
 def prepare_for_inference(model, device, dtype):
-    model.to(str2torch_device(device))
+    if hasattr(model.config, "pretraining_tp"):
+        model.config.pretraining_tp = 1 
     model.to(str2torch_dtype(dtype))
+    if device == "cuda" and torch.cuda.device_count() > 1:
+        max_memory = get_balanced_memory(
+            model,
+            no_split_module_classes=model._no_split_modules,
+            dtype=str2torch_dtype(dtype)
+        )
+        device_map = infer_auto_device_map(model, no_split_module_classes=model._no_split_modules, max_memory=max_memory, dtype=str2torch_dtype(dtype))
+        print(device_map)
+        dispatch_model(model, device_map=device_map)
+    else:
+        model.to(str2torch_device(device))
     model.eval()
     return model
 
-def free_memory():
-    # del model
-    gc.collect()
-    torch.cuda.empty_cache()
+
 
 
 def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=""):
@@ -97,3 +99,22 @@ def recurse_setattr(module, name, value):
     else:
         name, rest = name.split(".", 1)
         recurse_setattr(getattr(module, name), rest, value)
+
+def get_model_config(model_path: str,
+               trust_remote_code: bool = True,
+               revision: Optional[str] = None) -> PretrainedConfig:
+    try:
+        config = AutoConfig.from_pretrained(
+            model_path, trust_remote_code=trust_remote_code, revision=revision)
+    except ValueError as e:
+        if (not trust_remote_code and
+                "requires you to execute the configuration file" in str(e)):
+            err_msg = (
+                "Failed to load the model config. If the model is a custom "
+                "model not yet available in the HuggingFace transformers "
+                "library, consider setting `trust_remote_code=True` in LLM "
+                "or using the `--trust-remote-code` flag in the CLI.")
+            raise RuntimeError(err_msg) from e
+        else:
+            raise e
+    return config

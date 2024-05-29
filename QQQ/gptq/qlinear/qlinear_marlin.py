@@ -94,13 +94,20 @@ class QuantLinear(nn.Module):
                 dtype=torch.float,
             ),
         )
-        # if self.group_size != self.infeatures:
-        self.register_buffer(
-            "s_group",
-            torch.empty(
-                (self.infeatures // self.group_size, self.outfeatures), dtype=torch.half
-            ),
-        )
+        if self.group_size != self.infeatures:
+            self.register_buffer(
+                "s_group",
+                torch.empty(
+                    (self.infeatures // self.group_size, self.outfeatures), dtype=torch.half
+                ),
+            )
+        else:
+            self.register_buffer(
+                "s_group",
+                torch.tensor(
+                    [], dtype=torch.half
+                ),
+            )
         # 128 is currently the minimum `tile_n`, hence it gives the maximum workspace size; 16 is the default `max_par`
         self.register_buffer(
             "workspace",

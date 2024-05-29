@@ -12,7 +12,7 @@ from .quantization.state import (
     enable_calibration_quantization,
     disable_all,
 )
-from QQQ.utils import get_model_architecture, get_max_length
+from QQQ.utils import get_model_architecture
 
 logger = logging.getLogger("QQQ")
 
@@ -116,7 +116,7 @@ def smooth(model, tokenizer, q_config, args):
         q_config.calibrate_path,
         training_args,
         q_config.calibrate,
-        max_length=get_max_length(model)
+        max_length=q_config.max_length
     )
     # get trainer
     dataloader = get_eval_dataloader(cali_data, training_args)

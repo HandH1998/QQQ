@@ -9,7 +9,6 @@ def export_smoothed_llama(model, scale_list):
     for name, module in model.named_modules():
         if isinstance(module, LlamaDecoderLayer):
             attn_ln = module.input_layernorm
-            # q, k, v = module.self_attn.q_proj, module.self_attn.k_proj, module.self_attn.v_proj
             q, k, v, o = (
                 module.self_attn.q_proj,
                 module.self_attn.k_proj,
@@ -24,9 +23,10 @@ def export_smoothed_llama(model, scale_list):
             v.weight.data *= scale_list[cnt].to(v.weight.data.device)
             cnt += 1
 
-            o.weight.data *= scale_list[cnt].to(o.weight.data.device)
-            v.weight.data /= scale_list[cnt].reshape(-1, 1).to(v.weight.data.device)
-            # module.self_attn = NewLlamaAttention(module.self_attn, scale_list[cnt])
+            # no smoothing o_proj for models using group attention
+            if module.self_attn.num_key_value_heads == module.self_attn.num_heads:
+                o.weight.data *= scale_list[cnt].to(o.weight.data.device)
+                v.weight.data /= scale_list[cnt].reshape(-1, 1).to(v.weight.data.device)
             cnt += 1
 
             ffn_ln = module.post_attention_layernorm
@@ -42,7 +42,6 @@ def export_smoothed_llama(model, scale_list):
 
             down.weight.data *= scale_list[cnt].to(down.weight.data.device)
             up.weight.data /= scale_list[cnt].reshape(-1, 1).to(up.weight.data.device)
-            # module.mlp = NewLlamaMLP(module.mlp, scale_list[cnt])
             cnt += 1
 
     return model

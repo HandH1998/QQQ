@@ -9,7 +9,6 @@ from QQQ.utils import (
     str2torch_device,
     find_layers,
     recurse_setattr,
-    get_max_length,
     free_memory
 )
 from .models import get_gptq_model_func
@@ -19,7 +18,7 @@ from .qlinear import QuantLinear
 @torch.no_grad()
 def apply_gptq(model, q_config, args):
     gptq_config = q_config.gptq
-    gptq_config.seqlen = get_max_length(model)
+    gptq_config.seqlen = q_config.max_length
     dataloader, _ = get_loaders(
         gptq_config.dataset,
         nsamples=gptq_config.nsamples,
@@ -84,6 +83,8 @@ def pack_model(
         )
         qlayers[name].pack(layers[name], scale, scale_extra)
         qlayers[name].to(layer_device)
+        del layers[name]
+        free_memory()
     print("Model packed.")
 
 

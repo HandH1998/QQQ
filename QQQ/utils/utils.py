@@ -6,6 +6,8 @@ import torch
 from easydict import EasyDict
 import random
 import json
+import gc
+
 
 DTYPE_MAP = {
     "float16": torch.float16,
@@ -64,4 +66,13 @@ def save_json(config, file_path):
         json.dump(config, json_file, indent=4)
 
 
+def parse_quant_config(config_path):
+  data = {}
+  with open(config_path, 'r', encoding='utf-8') as file:
+    data = json.load(file)
+  return data
+
+def free_memory():
+    gc.collect()
+    torch.cuda.empty_cache()
 
