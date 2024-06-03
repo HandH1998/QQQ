@@ -1,5 +1,5 @@
 # QQQ: Quality Quatuor bit Quantization for Large Language Models
-The paper will published on arXiv soon.
+The paper will be published on arXiv soon.
 
 QQQ is an innovative and hardware-optimized W4A8 quantization solution. QQQ incorporates adaptive smoothing and Hessian-based compensation, significantly boosting the model's performance without the need for extensive training.
 Moreover, we meticulously crafted W4A8 GEMM kernels to expedite the inference speed. Our comprehensive experiments demonstrate that QQQ not only matches the performance of the leading W4A8, W8A8, and W4A16 quantization methods but also significantly accelerates inference—achieving up to **2.24x**, **2.10x**, and **1.25x** speed boosting compared to FP16, W8A8, and W4A16, respectively.
