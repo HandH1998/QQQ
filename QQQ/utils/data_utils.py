@@ -8,8 +8,7 @@ def get_pile(nsamples, seed, seqlen, model):
     print("get_pile")
     traindata = load_dataset(
         "json",
-        # TODO(zhangying): remove the default data path
-        data_files="/mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/pile/val.jsonl.zst",
+        data_files="/mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/datasets/pile/val.jsonl.zst",
         split="train",
     )
 

@@ -124,9 +124,7 @@ def smooth(model, tokenizer, q_config, args):
 
     logger.info("begin smooth!")
     st = time.time()
-    enable_calibration_quantization(
-        model, except_quantizer=getattr(q_config, "except_quantizer", None)
-    )
+    enable_calibration_quantization(model)
     model_type = get_model_architecture(model.config)
     if model_type == "llama":
         from .quantization import migration_llama as migration

@@ -70,15 +70,6 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-# def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
-#     gather_indices = position_ids[:, None, :, None]  # [bs, 1, seq_len, 1]
-#     gather_indices = gather_indices.repeat(1, cos.shape[1], 1, cos.shape[3])
-#     cos = torch.gather(cos.repeat(gather_indices.shape[0], 1, 1, 1), 2, gather_indices)
-#     sin = torch.gather(sin.repeat(gather_indices.shape[0], 1, 1, 1), 2, gather_indices)
-#     q_embed = (q * cos) + (rotate_half(q) * sin)
-#     k_embed = (k * cos) + (rotate_half(k) * sin)
-#     return q_embed, k_embed
-
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
@@ -171,12 +162,6 @@ class QuantizedLlamaAttention(QuantizedModule):
         )
         self.rotary_emb = org_module.rotary_emb
 
-        # for torch.bmm
-        self.query_permute_post_act_fake_quant = Quantizer(None, a_qconfig)
-        self.key_transpose_post_act_fake_quant = Quantizer(None, a_qconfig)
-        self.value_permute_post_act_fake_quant = Quantizer(None, a_qconfig)
-        self.attention_probs_post_act_fake_quant = Quantizer(None, a_qconfig)
-
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return (
             tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -230,16 +215,6 @@ class QuantizedLlamaAttention(QuantizedModule):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        query_states = self.query_permute_post_act_fake_quant(
-            query_states, observation_mask, 2
-        )
-        key_states = self.key_transpose_post_act_fake_quant(
-            key_states, observation_mask, 2
-        )
-        value_states = self.value_permute_post_act_fake_quant(
-            value_states, observation_mask, 2
-        )
-
         attn_weights = torch.matmul(
             query_states, key_states.transpose(2, 3)
         ) / math.sqrt(self.head_dim)
@@ -264,7 +239,6 @@ class QuantizedLlamaAttention(QuantizedModule):
         attn_weights = nn.functional.softmax(
             attn_weights, dim=-1, dtype=torch.float32
         ).to(query_states.dtype)
-        attn_weights = self.attention_probs_post_act_fake_quant(attn_weights)
         attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -315,10 +289,6 @@ class QuantizedLlamaDecoderLayer(QuantizedModule):
         self.w_qconfig = w_qconfig
         self.a_qconfig = a_qconfig
         self.qinput = qinput
-
-        # self.first_layer_norm = org_module.first_layer_norm
-        # self.post_attention_layernorm = org_module.post_attention_layernorm
-
         self.first_layer_norm = QuantizedLlamaRMSNorm(org_module.input_layernorm)
 
         if self.qinput:

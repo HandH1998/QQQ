@@ -5,14 +5,12 @@ from .observer import ObserverBase
 logger = logging.getLogger("QQQ")
 
 def enable_calibration_quantization(
-    model, quantizer_type="fake_quant", except_quantizer=None
+    model, quantizer_type="fake_quant"
 ):
     logger.info("Enable observer and Enable quantize for {}".format(quantizer_type))
     for name, submodule in model.named_modules():
         if isinstance(submodule, QuantizeBase):
-            if (quantizer_type not in name) or (
-                except_quantizer is not None and name.split(".")[-1] in except_quantizer
-            ):
+            if quantizer_type not in name:
                 logger.debug("The except_quantizer is {}".format(name))
                 submodule.disable_observer()
                 submodule.disable_fake_quant()

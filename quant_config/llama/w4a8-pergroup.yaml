@@ -1,6 +1,6 @@
 a_qconfig:
     quantizer: TokenFixedFakeQuantize
-    observer: MinMaxObserver # EMAMSEObserver EMAMinMaxObserver EMAQuantileObserver EMAPruneMinMaxObserver
+    observer: MinMaxObserver
     bit: 8
     symmetric: True
     ch_axis: 0
@@ -12,9 +12,8 @@ w_qconfig:
     ch_axis: 0 # perchannel 0 perlayer -1
     group_size: 128
 calibrate: 128
-calibrate_path: /mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/pile/val.jsonl.zst
+calibrate_path: /mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/datasets/pile/val.jsonl.zst #
 is_remove_padding: True
-except_quantizer: [query_permute_post_act_fake_quant, key_transpose_post_act_fake_quant, value_permute_post_act_fake_quant, attention_probs_post_act_fake_quant] # disable bmm quantization
 gptq:
     dataset: wikitext2
     sym: True
