@@ -1,9 +1,15 @@
-# QQQ: Quality Quatuor bit Quantization for Large Language Models
-The paper will be published on arXiv soon.
+# QQQ: Quality Quattuor-Bit Quantization for Large Language Models
+[[Paper](https://arxiv.org/pdf/2406.09904)]
 
-QQQ is an innovative and hardware-optimized W4A8 quantization solution. QQQ incorporates adaptive smoothing and Hessian-based compensation, significantly boosting the model's performance without the need for extensive training.
-Moreover, we meticulously crafted W4A8 GEMM kernels to expedite the inference speed. Our comprehensive experiments demonstrate that QQQ not only matches the performance of the leading W4A8, W8A8, and W4A16 quantization methods but also significantly accelerates inference—achieving up to **2.24x**, **2.10x**, and **1.25x** speed boosting compared to FP16, W8A8, and W4A16, respectively.
-Additionally, our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM kernels have attained remarkable speedups of **3.67x** and **3.29x** over FP16 GEMM.
+Quantization is a proven effective method for compressing large language models. Although popular techniques like W8A8 and W4A16 effectively maintain model performance, they often fail to concurrently speed up the prefill and decoding stages of inference. W4A8 is a promising strategy to accelerate both of them while usually leads to a significant performance degradation.
+To address these issues, we present QQQ, a **Q**uality **Q**uattuor-bit **Q**uantization method with 4-bit weights and 8-bit activations. QQQ employs adaptive smoothing and Hessian-based compensation, significantly enhancing the performance of quantized models without extensive training.
+Furthermore, we meticulously engineer W4A8 GEMM kernels to increase inference speed. 
+Our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM achieve impressive speed increases of **3.67x** and **3.29x** over FP16 GEMM.
+Our extensive experiments show that QQQ achieves performance on par with existing state-of-the-art LLM quantization methods while significantly accelerating inference, achieving speed boosts up to **2.24x**, **2.10x**, and **1.25x** compared to FP16, W8A8, and W4A16, respectively.
+
+## News or Update
+- [2024/06/17] **Update!!!** We release the QQQ [paper](https://arxiv.org/pdf/2406.09904) on arXiv.
+- [2024/06/03] We release the QQQ code at this repository.
 
 ## Install
 ### Prerequisites
@@ -118,6 +124,11 @@ Here is the speedup over PyTorch FP16 GEMM (Calling CUTLASS) of all GEMMs under 
 If you find QQQ useful or relevant to your research, please cite our paper:
 
 ```bibtex
-It will come soon!
+@article{zhang2024qqq,
+      title={QQQ: Quality Quattuor-Bit Quantization for Large Language Models}, 
+      author={Ying Zhang and Peng Zhang and Mincong Huang and Jingyang Xiang and Yujie Wang and Chao Wang and Yineng Zhang and Lei Yu and Chuan Liu and Wei Lin},
+      journal={arXiv preprint arXiv:2406.09904},
+      year={2024}
+}
 
 ```
