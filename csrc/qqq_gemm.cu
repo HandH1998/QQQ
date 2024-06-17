@@ -65,33 +65,30 @@ __device__ inline void cp_async4_pred(void* smem_ptr, const void* glob_ptr, bool
   );
 }
 
-// Asynchronous global->shared copy with a cache hint indicating that the values may be evicted immediately; used for
-// quantized weights B, which are only accessed precisely once and should thus not pollute the L2 cache which we need
-// for inputs A and outputs C. 
-__device__ inline void cp_async4_stream(void* smem_ptr, const void* glob_ptr) {
+// Asynchronous global->shared copy
+__device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
   const int BYTES = 16;
   uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
   asm volatile(
-    "{\n"
-    "   .reg .b64 p;\n"
-    "   createpolicy.fractional.L2::evict_first.b64 p, 1.0;"
-    "   cp.async.cg.shared.global.L2::cache_hint [%0], [%1], %2, p;\n"
-    "}\n" :: "r"(smem), "l"(glob_ptr), "n"(BYTES)
-  );
+      "{\n"
+      "   cp.async.cg.shared.global [%0], [%1], %2;\n"
+      "}\n" ::"r"(smem),
+      "l"(glob_ptr), "n"(BYTES));
 }
-// NOTE(HandH1998): cp.async.cg only support BYTES = 16, however, cp.async.ca can support BYTES = 4, 8, 16
-// as s1's shape is equal to prob_m, we need set s1 to float type, and cp_size = 1 float, i.e., 4 BYTES
+
+// NOTE(HandH1998): cp.async.cg only support BYTES = 16, however,
+// cp.async.ca can support BYTES = 4, 8, 16;
+// as s1's shape is equal to prob_m, we need set s1 to float type,
+// and cp_size = 1 float, i.e., 4 BYTES
 // Asynchronous global->shared copy for activation quantizaton scales s1
-__device__ inline void cp_async1_stream(void* smem_ptr, const void* glob_ptr) {
+__device__ inline void cp_async1(void* smem_ptr, const void* glob_ptr) {
   const int BYTES = 4;
   uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
   asm volatile(
-    "{\n"
-    "   .reg .b64 p;\n"
-    "   createpolicy.fractional.L2::evict_first.b64 p, 1.0;"
-    "   cp.async.ca.shared.global.L2::cache_hint [%0], [%1], %2, p;\n"
-    "}\n" :: "r"(smem), "l"(glob_ptr), "n"(BYTES)
-  );
+      "{\n"
+      "   cp.async.ca.shared.global [%0], [%1], %2;\n"
+      "}\n" ::"r"(smem),
+      "l"(glob_ptr), "n"(BYTES));
 }
 
 // Async copy fence.
@@ -484,7 +481,7 @@ __global__ void Marlin(
       int4* sh_b_stage = sh_b + b_sh_stage * pipe;
       #pragma unroll
       for (int i = 0; i < b_sh_wr_iters; i++) {
-        cp_async4_stream(&sh_b_stage[b_sh_wr_delta * i + b_sh_wr], B_ptr[i]);
+        cp_async4(&sh_b_stage[b_sh_wr_delta * i + b_sh_wr], B_ptr[i]);
         B_ptr[i] += b_gl_rd_delta_o;
       }
       // Only fetch scales if this tile starts a new group
@@ -492,7 +489,7 @@ __global__ void Marlin(
         if (pipe % (group_blocks / thread_k_blocks) == 0) {
           int4* sh_s3_stage = sh_s3 + s3_sh_stage * pipe;
           if (s3_sh_wr_pred)
-            cp_async4_stream(&sh_s3_stage[s3_sh_wr], &s3[s3_gl_rd]);
+            cp_async4(&sh_s3_stage[s3_sh_wr], &s3[s3_gl_rd]);
           s3_gl_rd += s3_gl_rd_delta;
         }
       }
@@ -603,6 +600,9 @@ __global__ void Marlin(
   // Since multiple threadblocks may process parts of the same column slice, we finally have to globally reduce over
   // the results. As the striped partioning minimizes the number of such reductions and our outputs are usually rather
   // small, we perform this reduction serially in L2 cache.
+  // global_reduce works on INT32 elements, which are the results of INT8 GEMM.
+  // This is why we need another INT32 maxtrix `C` to reduce instead of the
+  // original half matrix `D`.
   auto global_reduce = [&] (bool first = false, bool last = false) {
     // We are very careful here to reduce directly in the output buffer to maximize L2 cache utilization in this step. 
     // To do this, we write out results in FP16 (but still reduce with FP32 compute).
@@ -767,10 +767,10 @@ __global__ void Marlin(
       // For per-column scales, we only fetch them here in the final step before write-out
       if (last) {
         if (s1_sh_wr_pred) {
-          cp_async1_stream(&sh_s1[s1_sh_wr], &s1[s1_gl_rd]);
+          cp_async1(&sh_s1[s1_sh_wr], &s1[s1_gl_rd]);
         }
         if (s2_sh_wr_pred) {
-          cp_async4_stream(&sh_s2[s2_sh_wr], &s2[s2_gl_rd]);
+          cp_async4(&sh_s2[s2_sh_wr], &s2[s2_gl_rd]);
         }
         cp_async_fence();
       }
@@ -825,7 +825,6 @@ __global__ void Marlin(
 // latency hiding. At the same time, we want relatively few warps to have many registers per warp and small tiles.
 const int THREADS = 256;
 const int STAGES = 4; // 4 pipeline stages fit into shared memory
-const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6 (< 8.0)
 
 #define CALL_IF(THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, GROUP_BLOCKS) \
   else if ( \
@@ -835,11 +834,11 @@ const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6
     cudaFuncSetAttribute( \
       Marlin<THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS>, \
       cudaFuncAttributeMaxDynamicSharedMemorySize, \
-      SHARED_MEM \
+      max_shared_mem \
     ); \
     Marlin< \
       THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS \
-    ><<<blocks, THREADS, SHARED_MEM, stream>>>( \
+    ><<<blocks, THREADS, max_shared_mem, stream>>>( \
       A_ptr, B_ptr, C_ptr, D_ptr, s1_ptr, s2_ptr, s3_ptr, \
       prob_m, prob_n, prob_k, \
       locks \
@@ -875,6 +874,9 @@ int qqq_cuda(
 
   if (sms == -1)
     cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
+  int max_shared_mem = 0;
+  cudaDeviceGetAttribute(&max_shared_mem,
+                         cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
   if (thread_k == -1 || thread_n == -1) {
     if (prob_m <= 16) {
       // For small batchizes, better partioning is slightly more important than better compute utilization
