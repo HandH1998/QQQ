@@ -8,7 +8,8 @@ Our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM achieve impressive
 Our extensive experiments show that QQQ achieves performance on par with existing state-of-the-art LLM quantization methods while significantly accelerating inference, achieving speed boosts up to **2.24x**, **2.10x**, and **1.25x** compared to FP16, W8A8, and W4A16, respectively.
 
 ## News or Update
-- [2024/06/17] **Update!!!** We release the QQQ [paper](https://arxiv.org/pdf/2406.09904) on arXiv.
+- [2024/07/17] **Update!!!** We put `quant_config.json` in the entry `quantization_config` of model's `config.json`. 
+- [2024/06/17] We release the QQQ [paper](https://arxiv.org/pdf/2406.09904) on arXiv.
 - [2024/06/03] We release the QQQ code at this repository.
 
 ## Install
@@ -59,7 +60,7 @@ python3 examples/eval_model.py \
 --batch_size 8 \
 --max_length 2048 
 ```
-### inference
+### Inference
 - inference with vLLM 
 
   We recommand to infer with vllm for a faster speed. Refer to this [PR](https://github.com/vllm-project/vllm/pull/5218). Here is an offline inference example.
@@ -82,7 +83,6 @@ python3 examples/eval_model.py \
   llm = LLM(
       model=model,
       tokenizer=tokenizer,
-      quantization="qqq",
   )
   # Generate texts from the prompts. The output is a list of RequestOutput objects
   # that contain the prompt, generated text, and other information.

@@ -10,7 +10,6 @@ from QQQ.utils import (
     build_model_and_tokenizer,
     prepare_for_inference,
     free_memory,
-    save_json,
 )
 logger = logging.getLogger("QQQ")
 
@@ -73,15 +72,17 @@ def main():
     model = prepare_for_inference(model, args.device, args.dtype)
     model = apply_gptq(model, q_config, args)
 
+    # quant_config
+    model.config.quantization_config = {
+        "group_size": q_config["gptq"]["groupsize"],
+        "quant_method": "qqq",
+        "wbits": q_config["gptq"]["wbits"]
+    }
+
     # save quantized model
     model.save_pretrained(args.save_path)
     tokenizer.save_pretrained(args.save_path)
-    # save quant config
-    save_json(
-        {"group_size": q_config["gptq"]["groupsize"], "wbits": q_config["gptq"]["wbits"]},
-        os.path.join(args.save_path, "quant_config.json"),
-    )
-    print("Quant Finished!")
+    logger.info("Quant Finished! The quantized model is saved at {}.".format(args.save_path))
 
 
 if __name__ == "__main__":

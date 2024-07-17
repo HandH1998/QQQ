@@ -1,4 +1,3 @@
-import os
 from tqdm import tqdm
 import argparse
 import collections
@@ -11,7 +10,6 @@ from lm_eval.models.huggingface import HFLM
 from QQQ.utils import (
     get_model_architecture,
     get_model_config,
-    parse_quant_config,
     get_loaders,
     pattern_match,
     update_results,
@@ -46,7 +44,6 @@ def parse_args():
 @torch.no_grad()
 def eval_model(model, tokenizer, args):
     max_length = args.max_length
-    print(max_length)
     results = {}
     # eval ppl
     if args.eval_ppl:
@@ -124,9 +121,8 @@ def eval_model(model, tokenizer, args):
 if __name__ == "__main__":
     args = parse_args()
     setup_seed(args.seed)
-    config_path = os.path.join(args.model_path, "quant_config.json")
-    quant_config = parse_quant_config(config_path)
     config = get_model_config(args.model_path)
+    quant_config = config.quantization_config
     model_type = get_model_architecture(config)
     quant_model_class = get_quantized_model_class(model_type)
     model = quant_model_class.from_pretrained(

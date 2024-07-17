@@ -1,10 +1,8 @@
-import os
 import argparse
 from transformers import AutoTokenizer
 from QQQ.utils import (
     get_model_architecture,
     get_model_config,
-    parse_quant_config,
     setup_seed,
 )
 from QQQ.gptq.models import get_quantized_model_class
@@ -39,9 +37,8 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     setup_seed(args.seed)
-    config_path = os.path.join(args.model_path, "quant_config.json")
-    quant_config = parse_quant_config(config_path)
     config = get_model_config(args.model_path)
+    quant_config = config.quantization_config
     model_type = get_model_architecture(config)
     quant_model_class = get_quantized_model_class(model_type)
     model = quant_model_class.from_pretrained(
