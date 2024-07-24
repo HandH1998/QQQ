@@ -78,8 +78,10 @@ class QuantLinear(nn.Module):
         self.group_size = group_size if group_size != -1 else infeatures
         self.bits = bits
         self.tile = 16
-        # only be used when self.group_size != self.infeatures
-        self.maxq = 2**self.bits - 1
+        if self.group_size != self.infeatures:
+            self.maxq = 2**self.bits - 1
+        else:
+            self.maxq = 2**(self.bits - 1) - 1
         self.max_par = 16
         self.register_buffer(
             "B",
@@ -188,6 +190,8 @@ class QuantLinear(nn.Module):
         if self.group_size != self.infeatures:
             w += (self.maxq + 1) // 2
             w = torch.clamp(w, 0, self.maxq)
+        else:
+            w = torch.clamp(w, -self.maxq, self.maxq)
         if self.group_size != self.infeatures:
             s_extra = s_extra.reshape(1, -1).to(dtype=torch.float)
             s = (
