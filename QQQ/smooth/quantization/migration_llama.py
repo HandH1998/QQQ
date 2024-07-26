@@ -387,7 +387,7 @@ class Migrator1DRangeSearchSQ(MigratorBase):
         self,
     ):
         act_scales = torch.max(self.cmx.abs(), self.cmn.abs())
-        weight_scales = self.weight.max(dim=0)[0].clamp(min=1e-5).to(self.device)
+        weight_scales = self.weight.abs().max(dim=0)[0].clamp(min=1e-5).to(self.device)
         best_scales = (
             (
                 act_scales.pow(self.smooth_alpha)
