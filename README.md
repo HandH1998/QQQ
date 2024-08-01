@@ -97,6 +97,8 @@ python3 examples/eval_model.py \
   
 
 - inference in this repo
+
+  Our inference script only supports simple text completion for base model like llama-2-7b-base. If you want to do the inference with chat model like llama-2-7b-chat, you should modify our script following the offical guidance. Specifically, you need to add a chat template to your prompt.
   ```
   python3 examples/test_model.py \
   --model_path ${quantized_model_path} \
