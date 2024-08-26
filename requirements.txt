@@ -1,0 +1,6 @@
+transformers==4.36.2
+datasets==2.16.1
+easydict
+accelerate
+zstandard
+lm_eval

@@ -12,13 +12,13 @@ w_qconfig:
     ch_axis: 0 # perchannel 0 perlayer -1
     group_size: 128
 calibrate: 128
-calibrate_path: /mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/datasets/pile/val.jsonl.zst #
+calibrate_path: /mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/datasets/pile/val.jsonl.zst # modify to your data path if enable smooth
 is_remove_padding: True
 gptq:
     dataset: wikitext2
     sym: True
     groupsize: 128
-    mse: False
+    mse: True
     act_order: True
     percdamp: 0.01
     nsamples: 128

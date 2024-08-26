@@ -1,0 +1,3 @@
+[submodule "third-party/fast-hadamard-transform"]
+	path = third-party/fast-hadamard-transform
+	url = https://github.com/Dao-AILab/fast-hadamard-transform.git

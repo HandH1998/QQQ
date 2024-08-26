@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import functools
 from typing import Optional
+import transformers
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, PretrainedConfig
 from .utils import str2torch_dtype, str2torch_device
 from accelerate.big_modeling import dispatch_model, infer_auto_device_map, get_balanced_memory
@@ -118,3 +119,30 @@ def get_model_config(model_path: str,
         else:
             raise e
     return config
+
+def get_transformer_layers(model, model_type):
+    if model_type == "llama":
+        return [layer for layer in model.model.layers]
+    else:
+        raise ValueError(f'Unknown model type {model_type}')
+    
+def get_lm_head(model, model_type):
+    if model_type == "llama":
+        return model.lm_head
+    else:
+        raise ValueError(f'Unknown model type {model_type}')
+
+def get_pre_head_layernorm(model, model_type):
+    if model_type == "llama":
+        pre_head_layernorm = model.model.norm
+        assert isinstance(pre_head_layernorm,
+                          transformers.models.llama.modeling_llama.LlamaRMSNorm)
+        return pre_head_layernorm
+    else:
+        raise ValueError(f'Unknown model type {model_type}')
+    
+def get_embeddings(model, model_type) -> list[torch.nn.Module]:
+    if model_type == "llama":
+        return [model.model.embed_tokens]
+    else:
+        raise ValueError(f'Unknown model type {model_type}')

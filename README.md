@@ -8,7 +8,8 @@ Our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM achieve impressive
 Our extensive experiments show that QQQ achieves performance on par with existing state-of-the-art LLM quantization methods while significantly accelerating inference, achieving speed boosts up to **2.24x**, **2.10x**, and **1.25x** compared to FP16, W8A8, and W4A16, respectively.
 
 ## News or Update
-- [2024/07/31] **Update!!!** The QQQ quantization method has been successfully integrated into the **official vLLM**. For more details, please refer to our merged [[PR](https://github.com/vllm-project/vllm/pull/5218)]. 
+- [2024/08/26] **Update!!!** We have integrated rotation into QQQ to improve quantization results without adding any inference overhead.
+- [2024/07/31] The QQQ quantization method has been successfully integrated into the **official vLLM**. For more details, please refer to our merged [[PR](https://github.com/vllm-project/vllm/pull/5218)]. 
 - [2024/07/17] We put `quant_config.json` in the entry `quantization_config` of model's `config.json`. 
 - [2024/06/17] We release the QQQ [paper](https://arxiv.org/pdf/2406.09904) on arXiv.
 - [2024/06/03] We release the QQQ code at this repository.
@@ -18,14 +19,13 @@ Our extensive experiments show that QQQ achieves performance on par with existin
 - Your GPU(s) must be of Compute Capability 8.0 or higher. Amphere and later architectures are supported.
 - Your CUDA version must be CUDA 11.4 or later.
 - Python 3.9+
-- Transformers 4.36.2
-- lm_eval 0.4.2
 ### Build from source
-Currently this repo only support build form source. We will release package soon.
+Currently this repo only support build form source.
 
 ```
 git clone https://github.com/HandH1998/QQQ.git
 cd QQQ
+git submodule update --init --recursive
 pip install -v -e .
 ```
 
@@ -122,6 +122,7 @@ Here is the speedup over PyTorch FP16 GEMM (Calling CUTLASS) of all GEMMs under 
 ## Acknowledgement
 - Special thanks the **GPTQ Team** for proposing **GPTQ** algorithm and open source the [code](https://github.com/IST-DASLab/gptq), and for releasing [Marlin kernel](https://github.com/IST-DASLab/marlin) which our W4A8 GEMM refers to.
 - Special thanks the **Outlier Suppression Plus Team** for proposing **Outlier Suppression Plus** algorithm and open source the [code](https://github.com/ModelTC/Outlier_Suppression_Plus/tree/main).
+- Special thanks the **QuaRot Team** for proposing **QuaRot** algorithm and open source the [code](https://github.com/spcl/QuaRot.git).
 
 ## Reference
 If you find QQQ useful or relevant to your research, please cite our paper:

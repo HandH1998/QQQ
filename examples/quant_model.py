@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import torch
+from QQQ.rotation import fuse_layer_norms, rotate_model
 from QQQ.smooth import smooth, export_smoothed_model, quantize_model
 from QQQ.gptq import apply_gptq
 from QQQ.utils import (
@@ -18,6 +19,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", default=None)
     parser.add_argument("--tokenizer_path", default=None)
+    parser.add_argument("--rotate_mode", type=str, default="hadamard", choices=["hadamard", "random"])
+    parser.add_argument("--smooth", action="store_true")
     parser.add_argument("--smooth_method", default="os+", choices=["os+", "awq"])
     parser.add_argument("--quant_config", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=None)
@@ -55,21 +58,35 @@ def main():
         args.model_path, args.tokenizer_path, args.dtype
     )
 
-    # smooth model
-    model = quantize_model(model, q_config, args)
-    scale_list = smooth(model, tokenizer, q_config, args)
-    del model
-    del tokenizer
+    # rotate model
+    model = fuse_layer_norms(model)
+    model, Q = rotate_model(model, args)
     free_memory()
+    prepare_for_inference(model, args.device, args.dtype)
 
-    # load model and apply smooth scales
-    model, tokenizer = build_model_and_tokenizer(
-        args.model_path, args.tokenizer_path, args.dtype
-    )
-    model = export_smoothed_model(model, scale_list)
+    # NOTE(HandH1998): No smoothing would give better results for now
+    if args.smooth:
+        # smooth model
+        model = quantize_model(model, q_config, args)
+        scale_list = smooth(model, tokenizer, q_config, args)
+        del model
+        del tokenizer
+        free_memory()
+
+        # load model and apply smooth scales
+        model, tokenizer = build_model_and_tokenizer(
+            args.model_path, args.tokenizer_path, args.dtype
+        )
+        # NOTE(HandH1998): smooth scale should work on the rotated model
+        model = fuse_layer_norms(model)
+        model, _ = rotate_model(model, args, Q)
+        free_memory()
+        prepare_for_inference(model, args.device, args.dtype)
+
+        model = export_smoothed_model(model, scale_list)
+        model = prepare_for_inference(model, args.device, args.dtype)
 
     # apply gptq
-    model = prepare_for_inference(model, args.device, args.dtype)
     model = apply_gptq(model, q_config, args)
 
     # quant_config
