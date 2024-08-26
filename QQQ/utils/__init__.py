@@ -10,7 +10,15 @@ from .model_utils import (
     get_transformer_layers,
     get_pre_head_layernorm,
     get_lm_head,
-    get_embeddings
+    get_embeddings,
 )
-from .utils import str2torch_dtype, str2torch_device, parse_config, setup_seed, save_json, parse_quant_config, free_memory
+from .utils import (
+    str2torch_dtype,
+    str2torch_device,
+    parse_config,
+    setup_seed,
+    save_json,
+    parse_quant_config,
+    free_memory,
+)
 from .eval_utils import update_results, pattern_match

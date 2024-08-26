@@ -25,7 +25,9 @@ from QQQ._CUDA import qqq_gemm
 logger = getLogger(__name__)
 
 
-def mul(A, B, C, D, s1, s2, s3, workspace, thread_k=-1, thread_n=-1, sms=-1, max_par=16):
+def mul(
+    A, B, C, D, s1, s2, s3, workspace, thread_k=-1, thread_n=-1, sms=-1, max_par=16
+):
     """INT8xINT4 multiply based on Marlin kernel; can be used within `torch.compile`.
     @A: `torch.int8` input matrix of shape `(m, k)` in standard row-major layout
     @B: `torch.int` weight matrix of original shape `(k, n)` in the specified format; see `Layer.pack()`
@@ -81,7 +83,7 @@ class QuantLinear(nn.Module):
         if self.group_size != self.infeatures:
             self.maxq = 2**self.bits - 1
         else:
-            self.maxq = 2**(self.bits - 1) - 1
+            self.maxq = 2 ** (self.bits - 1) - 1
         self.max_par = 16
         self.register_buffer(
             "B",
@@ -100,15 +102,14 @@ class QuantLinear(nn.Module):
             self.register_buffer(
                 "s_group",
                 torch.empty(
-                    (self.infeatures // self.group_size, self.outfeatures), dtype=torch.half
+                    (self.infeatures // self.group_size, self.outfeatures),
+                    dtype=torch.half,
                 ),
             )
         else:
             self.register_buffer(
                 "s_group",
-                torch.tensor(
-                    [], dtype=torch.half
-                ),
+                torch.tensor([], dtype=torch.half),
             )
         # 128 is currently the minimum `tile_n`, hence it gives the maximum workspace size; 16 is the default `max_par`
         self.register_buffer(
@@ -144,7 +145,7 @@ class QuantLinear(nn.Module):
                     4 * (i % 4),
                     4 * (i % 4) + 1,
                     4 * (i % 4) + 2,
-                    4 * (i % 4) + 3
+                    4 * (i % 4) + 3,
                 ]:
                     perm1.append(16 * row + col + 8 * block)
             for j in range(4):
@@ -164,7 +165,6 @@ class QuantLinear(nn.Module):
         for i in range(4):
             scale_perm_single.extend([2 * i + j for j in [0, 1, 8, 9, 16, 17, 24, 25]])
         return perm, scale_perm, scale_perm_single
-
 
     def post_init(self):
         pass
@@ -194,9 +194,7 @@ class QuantLinear(nn.Module):
             w = torch.clamp(w, -self.maxq, self.maxq)
         if self.group_size != self.infeatures:
             s_extra = s_extra.reshape(1, -1).to(dtype=torch.float)
-            s = (
-                s.reshape(-1, self.outfeatures) / s_extra
-            ).to(dtype=torch.half)
+            s = (s.reshape(-1, self.outfeatures) / s_extra).to(dtype=torch.half)
 
             w = w.reshape((self.group_size, -1, self.outfeatures))
             w = w.permute(1, 0, 2)
@@ -208,9 +206,11 @@ class QuantLinear(nn.Module):
             s_extra = s_extra.reshape((-1, self.outfeatures)).contiguous()
         else:
             # NOTE(zhangying): div 2 ** (8 - self.bits)) to deal with right_shift in unpacking
-            s = (s / (2 ** (8 - self.bits))).reshape((-1, len(self._scale_perm_single)))[
-                :, self._scale_perm_single
-            ].to(dtype=torch.float)
+            s = (
+                (s / (2 ** (8 - self.bits)))
+                .reshape((-1, len(self._scale_perm_single)))[:, self._scale_perm_single]
+                .to(dtype=torch.float)
+            )
         s = s.reshape((-1, self.outfeatures)).contiguous()
         w = w.reshape(
             (
@@ -238,7 +238,9 @@ class QuantLinear(nn.Module):
             self.s_group[:, :] = s.to(self.s_group.device)
             self.s_channel[:, :] = s_extra.to(self.s_channel.device)
         else:
-            self.s_group = torch.tensor([], dtype=torch.half, device=self.s_channel.device)
+            self.s_group = torch.tensor(
+                [], dtype=torch.half, device=self.s_channel.device
+            )
             self.s_channel[:, :] = s.to(self.s_channel.device)
         if linear.bias is not None:
             if self.bias is not None:
@@ -251,7 +253,7 @@ class QuantLinear(nn.Module):
         quant_scale = x.abs().max(dim=-1, keepdim=True)[0].div(127.0).to(torch.float)
         x = (x / quant_scale).round().clamp(-128, 127).to(torch.int8)
         return x, quant_scale
-    
+
     def forward(self, A):
         out_shape = A.shape[:-1] + (self.outfeatures,)
         A = A.reshape(-1, A.shape[-1]).half()
@@ -266,10 +268,11 @@ class QuantLinear(nn.Module):
             self.s_channel,
             self.s_group,
             self.workspace,
-            max_par=self.max_par
+            max_par=self.max_par,
         )
         D = D.reshape(out_shape)
         D = D + self.bias if self.bias is not None else D
         return D
+
 
 __all__ = ["QuantLinear"]

@@ -9,7 +9,7 @@ from QQQ.utils import (
     str2torch_device,
     find_layers,
     recurse_setattr,
-    free_memory
+    free_memory,
 )
 from .models import get_gptq_model_func
 from .qlinear import QuantLinear

@@ -3,9 +3,18 @@ import torch.nn as nn
 import functools
 from typing import Optional
 import transformers
-from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, PretrainedConfig
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    PretrainedConfig,
+)
 from .utils import str2torch_dtype, str2torch_device
-from accelerate.big_modeling import dispatch_model, infer_auto_device_map, get_balanced_memory
+from accelerate.big_modeling import (
+    dispatch_model,
+    infer_auto_device_map,
+    get_balanced_memory,
+)
 
 _MODEL_TYPE = {
     "LlamaForCausalLM": "llama",
@@ -20,8 +29,12 @@ def build_model_and_tokenizer(
         tokenizer_path, trust_remote_code=trust_remote_code
     )
     if tokenizer.pad_token_id is None:
-            tokenizer.pad_token_id = tokenizer.eos_token_id
-    kwargs = {"torch_dtype": str2torch_dtype(dtype), "device_map": "auto", "attn_implementation": "eager"}
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    kwargs = {
+        "torch_dtype": str2torch_dtype(dtype),
+        "device_map": "auto",
+        "attn_implementation": "eager",
+    }
     model = AutoModelForCausalLM.from_pretrained(
         model_path, trust_remote_code=trust_remote_code, **kwargs
     )
@@ -39,26 +52,29 @@ def get_model_architecture(config):
         f"Supported architectures: {list(_MODEL_TYPE.keys())}"
     )
 
-    
+
 def prepare_for_inference(model, device, dtype):
     if hasattr(model.config, "pretraining_tp"):
-        model.config.pretraining_tp = 1 
+        model.config.pretraining_tp = 1
     model.to(str2torch_dtype(dtype))
     if device == "cuda" and torch.cuda.device_count() > 1:
         max_memory = get_balanced_memory(
             model,
             no_split_module_classes=model._no_split_modules,
-            dtype=str2torch_dtype(dtype)
+            dtype=str2torch_dtype(dtype),
         )
-        device_map = infer_auto_device_map(model, no_split_module_classes=model._no_split_modules, max_memory=max_memory, dtype=str2torch_dtype(dtype))
+        device_map = infer_auto_device_map(
+            model,
+            no_split_module_classes=model._no_split_modules,
+            max_memory=max_memory,
+            dtype=str2torch_dtype(dtype),
+        )
         print(device_map)
         dispatch_model(model, device_map=device_map)
     else:
         model.to(str2torch_device(device))
     model.eval()
     return model
-
-
 
 
 def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=""):
@@ -72,6 +88,7 @@ def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=""):
             )
         )
     return res
+
 
 import functools
 
@@ -101,48 +118,58 @@ def recurse_setattr(module, name, value):
         name, rest = name.split(".", 1)
         recurse_setattr(getattr(module, name), rest, value)
 
-def get_model_config(model_path: str,
-               trust_remote_code: bool = True,
-               revision: Optional[str] = None) -> PretrainedConfig:
+
+def get_model_config(
+    model_path: str, trust_remote_code: bool = True, revision: Optional[str] = None
+) -> PretrainedConfig:
     try:
         config = AutoConfig.from_pretrained(
-            model_path, trust_remote_code=trust_remote_code, revision=revision)
+            model_path, trust_remote_code=trust_remote_code, revision=revision
+        )
     except ValueError as e:
-        if (not trust_remote_code and
-                "requires you to execute the configuration file" in str(e)):
+        if (
+            not trust_remote_code
+            and "requires you to execute the configuration file" in str(e)
+        ):
             err_msg = (
                 "Failed to load the model config. If the model is a custom "
                 "model not yet available in the HuggingFace transformers "
                 "library, consider setting `trust_remote_code=True` in LLM "
-                "or using the `--trust-remote-code` flag in the CLI.")
+                "or using the `--trust-remote-code` flag in the CLI."
+            )
             raise RuntimeError(err_msg) from e
         else:
             raise e
     return config
 
+
 def get_transformer_layers(model, model_type):
     if model_type == "llama":
         return [layer for layer in model.model.layers]
     else:
-        raise ValueError(f'Unknown model type {model_type}')
-    
+        raise ValueError(f"Unknown model type {model_type}")
+
+
 def get_lm_head(model, model_type):
     if model_type == "llama":
         return model.lm_head
     else:
-        raise ValueError(f'Unknown model type {model_type}')
+        raise ValueError(f"Unknown model type {model_type}")
+
 
 def get_pre_head_layernorm(model, model_type):
     if model_type == "llama":
         pre_head_layernorm = model.model.norm
-        assert isinstance(pre_head_layernorm,
-                          transformers.models.llama.modeling_llama.LlamaRMSNorm)
+        assert isinstance(
+            pre_head_layernorm, transformers.models.llama.modeling_llama.LlamaRMSNorm
+        )
         return pre_head_layernorm
     else:
-        raise ValueError(f'Unknown model type {model_type}')
-    
+        raise ValueError(f"Unknown model type {model_type}")
+
+
 def get_embeddings(model, model_type) -> list[torch.nn.Module]:
     if model_type == "llama":
         return [model.model.embed_tokens]
     else:
-        raise ValueError(f'Unknown model type {model_type}')
+        raise ValueError(f"Unknown model type {model_type}")

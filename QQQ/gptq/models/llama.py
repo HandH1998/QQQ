@@ -21,7 +21,6 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 
-
 @torch.no_grad()
 def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
     print("Starting GPTQ quantization ...")
@@ -81,7 +80,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
         outs.to(cur_device)
         attention_mask.to(cur_device)
         position_ids.to(cur_device)
-        
+
         full = find_layers(layer)
         sequential = [list(full.keys())]
 
@@ -131,7 +130,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
                     scale,
                     zero,
                     g_idx,
-                    scale_extra
+                    scale_extra,
                 )
                 gptq[name].free()
 
@@ -159,11 +158,12 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
 
 class QuantizedLlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
+
     def __init__(
         self,
         config: LlamaConfig,
         quant_config: dict[str, str],
-        layer_idx: Optional[int] = None
+        layer_idx: Optional[int] = None,
     ):
         super().__init__()
         self.config = config
@@ -190,20 +190,44 @@ class QuantizedLlamaAttention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        
+
         group_size = quant_config["group_size"]
         wbits = quant_config["wbits"]
-        self.q_proj = QuantLinear(wbits, group_size, self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.k_proj = QuantLinear(wbits, group_size, self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.v_proj = QuantLinear(wbits, group_size, self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.o_proj = QuantLinear(wbits, group_size, self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.q_proj = QuantLinear(
+            wbits,
+            group_size,
+            self.hidden_size,
+            self.num_heads * self.head_dim,
+            bias=False,
+        )
+        self.k_proj = QuantLinear(
+            wbits,
+            group_size,
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=False,
+        )
+        self.v_proj = QuantLinear(
+            wbits,
+            group_size,
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=False,
+        )
+        self.o_proj = QuantLinear(
+            wbits,
+            group_size,
+            self.num_heads * self.head_dim,
+            self.hidden_size,
+            bias=False,
+        )
         self._init_rope()
-    
+
     _init_rope = LlamaAttention._init_rope
     _shape = LlamaAttention._shape
     forward = LlamaAttention.forward
-    
-    
+
+
 class QuantizedLlamaMLP(nn.Module):
     def __init__(self, config: LlamaConfig, quant_config: dict[str, str]):
         super().__init__()
@@ -212,35 +236,52 @@ class QuantizedLlamaMLP(nn.Module):
         self.intermediate_size = config.intermediate_size
         group_size = quant_config["group_size"]
         wbits = quant_config["wbits"]
-        self.gate_proj = QuantLinear(wbits, group_size, self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = QuantLinear(wbits, group_size, self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = QuantLinear(wbits, group_size, self.intermediate_size, self.hidden_size, bias=False)
+        self.gate_proj = QuantLinear(
+            wbits, group_size, self.hidden_size, self.intermediate_size, bias=False
+        )
+        self.up_proj = QuantLinear(
+            wbits, group_size, self.hidden_size, self.intermediate_size, bias=False
+        )
+        self.down_proj = QuantLinear(
+            wbits, group_size, self.intermediate_size, self.hidden_size, bias=False
+        )
         self.act_fn = ACT2FN[config.hidden_act]
-    
+
     forward = LlamaMLP.forward
 
-    
+
 class QuantizedLlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, quant_config: dict[str, str], layer_idx: int):
+    def __init__(
+        self, config: LlamaConfig, quant_config: dict[str, str], layer_idx: int
+    ):
         super().__init__()
         self.hidden_size = config.hidden_size
         # only support LlamaAttention for now. TODO: support LlamaFlashAttention2 and LlamaSdpaAttention
         self.self_attn = QuantizedLlamaAttention(config, quant_config, layer_idx)
         self.mlp = QuantizedLlamaMLP(config, quant_config)
         self.input_layernorm = LlamaRMSNorm(self.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(self.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(
+            self.hidden_size, eps=config.rms_norm_eps
+        )
 
     forward = LlamaDecoderLayer.forward
 
-    
+
 class QuantizedLlamaModel(LlamaPreTrainedModel):
     def __init__(self, config: LlamaConfig, quant_config: dict[str, str]):
         super().__init__(config)
         self.config = config
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([QuantizedLlamaDecoderLayer(config, quant_config, layer_idx) for layer_idx in range(config.num_hidden_layers)])
+        self.embed_tokens = nn.Embedding(
+            config.vocab_size, config.hidden_size, self.padding_idx
+        )
+        self.layers = nn.ModuleList(
+            [
+                QuantizedLlamaDecoderLayer(config, quant_config, layer_idx)
+                for layer_idx in range(config.num_hidden_layers)
+            ]
+        )
         self._use_sdpa = config._attn_implementation == "sdpa"
         self._use_flash_attention_2 = config._attn_implementation == "flash_attention_2"
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -251,7 +292,7 @@ class QuantizedLlamaModel(LlamaPreTrainedModel):
     get_input_embeddings = LlamaModel.get_input_embeddings
     set_input_embeddings = LlamaModel.set_input_embeddings
     forward = LlamaModel.forward
-    
+
 
 class QuantizedLlamaForCausalLM(LlamaPreTrainedModel):
     def __init__(self, config, quant_config):
@@ -272,5 +313,4 @@ class QuantizedLlamaForCausalLM(LlamaPreTrainedModel):
     get_decoder = LlamaForCausalLM.get_decoder
     forward = LlamaForCausalLM.forward
     prepare_inputs_for_generation = LlamaForCausalLM.prepare_inputs_for_generation
-    _reorder_cache = LlamaForCausalLM._reorder_cache  
-
+    _reorder_cache = LlamaForCausalLM._reorder_cache

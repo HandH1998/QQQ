@@ -95,7 +95,6 @@ def calibrate_batch(model, fp_input):
 
 
 def get_eval_dataloader(eval_dataset, training_args):
-
     return DataLoader(
         eval_dataset,
         batch_size=training_args.per_device_eval_batch_size,
@@ -116,7 +115,7 @@ def smooth(model, tokenizer, q_config, args):
         q_config.calibrate_path,
         training_args,
         q_config.calibrate,
-        max_length=q_config.max_length
+        max_length=q_config.max_length,
     )
     # get trainer
     dataloader = get_eval_dataloader(cali_data, training_args)

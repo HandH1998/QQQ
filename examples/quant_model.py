@@ -12,6 +12,7 @@ from QQQ.utils import (
     prepare_for_inference,
     free_memory,
 )
+
 logger = logging.getLogger("QQQ")
 
 
@@ -19,7 +20,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", default=None)
     parser.add_argument("--tokenizer_path", default=None)
-    parser.add_argument("--rotate_mode", type=str, default="hadamard", choices=["hadamard", "random"])
+    parser.add_argument(
+        "--rotate_mode", type=str, default="hadamard", choices=["hadamard", "random"]
+    )
     parser.add_argument("--smooth", action="store_true")
     parser.add_argument("--smooth_method", default="os+", choices=["os+", "awq"])
     parser.add_argument("--quant_config", type=str, default=None)
@@ -93,13 +96,15 @@ def main():
     model.config.quantization_config = {
         "group_size": q_config["gptq"]["groupsize"],
         "quant_method": "qqq",
-        "wbits": q_config["gptq"]["wbits"]
+        "wbits": q_config["gptq"]["wbits"],
     }
 
     # save quantized model
     model.save_pretrained(args.save_path)
     tokenizer.save_pretrained(args.save_path)
-    logger.info("Quant Finished! The quantized model is saved at {}.".format(args.save_path))
+    logger.info(
+        "Quant Finished! The quantized model is saved at {}.".format(args.save_path)
+    )
 
 
 if __name__ == "__main__":

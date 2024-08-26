@@ -4,9 +4,8 @@ from .observer import ObserverBase
 
 logger = logging.getLogger("QQQ")
 
-def enable_calibration_quantization(
-    model, quantizer_type="fake_quant"
-):
+
+def enable_calibration_quantization(model, quantizer_type="fake_quant"):
     logger.info("Enable observer and Enable quantize for {}".format(quantizer_type))
     for name, submodule in model.named_modules():
         if isinstance(submodule, QuantizeBase):

@@ -61,18 +61,19 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
+
 def save_json(config, file_path):
-    with open(file_path, 'w') as json_file:
+    with open(file_path, "w") as json_file:
         json.dump(config, json_file, indent=4)
 
 
 def parse_quant_config(config_path):
-  data = {}
-  with open(config_path, 'r', encoding='utf-8') as file:
-    data = json.load(file)
-  return data
+    data = {}
+    with open(config_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+    return data
+
 
 def free_memory():
     gc.collect()
     torch.cuda.empty_cache()
-

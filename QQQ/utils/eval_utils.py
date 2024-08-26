@@ -4,6 +4,7 @@ import fnmatch
 
 logger = logging.getLogger("QQQ")
 
+
 # Returns a list containing all values of the source_list that
 # match at least one of the patterns
 def pattern_match(patterns, source_list):
@@ -20,4 +21,3 @@ def update_results(results, new_result):
             results[key].update(value)
         else:
             results.update({key: value})
-
