@@ -123,13 +123,17 @@ if __name__ == "__main__":
     setup_seed(args.seed)
     config = get_model_config(args.model_path)
     quant_config = config.quantization_config
+    # NOTE(HandH1998): delete quantization_config to avoid getting into transformers' quantization method validation, 
+    # as transformers doesn't support qqq for now 
+    del config.quantization_config
     model_type = get_model_architecture(config)
     quant_model_class = get_quantized_model_class(model_type)
     model = quant_model_class.from_pretrained(
         args.model_path,
+        config=config,
         quant_config=quant_config,
         device_map="sequential",
-        attn_implementation="eager",
+        torch_dtype=torch.float16
     )
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_path,
