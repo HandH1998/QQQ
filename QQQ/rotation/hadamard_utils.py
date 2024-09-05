@@ -109,8 +109,8 @@ def matmul_hadU_cuda(X, hadK, K):
     return input.reshape(X.shape)
 
 
-def matmul_hadUt_cuda(X, hadK, K):
-    return matmul_hadU_cuda(X, hadK, K, transpose=True)
+# def matmul_hadUt_cuda(X, hadK, K):
+#     return matmul_hadU_cuda(X, hadK, K, transpose=True)
 
 
 def apply_exact_had_to_linear(module, had_dim=-1, output=False):
@@ -120,16 +120,28 @@ def apply_exact_had_to_linear(module, had_dim=-1, output=False):
     if had_dim != -1:
         assert is_pow2(had_dim), "Hadamard dimension must be a power of 2!"
 
+    # weight
     W_ = module.weight.data
     dtype = W_.dtype
     dev = W_.device
     init_shape = W_.shape
     W_ = W_.float().cuda()
 
+    # bias
+    # bias needs to apply hadamard when output=True
+    if module.bias is not None:
+        b_ = module.bias.data
+        b_dtype = b_.dtype
+        b_init_shape = b_.shape
+        b_ = b_.unsqueeze(0) if len(b_init_shape) == 1 else b_
+        b_ = b_.float().cuda()
+
     if had_dim == -1:
         if output:
             had_K, K = get_hadK(out_features)
             W_ = matmul_hadU_cuda(W_.t(), had_K, K).t()
+            if module.bias is not None:
+                b_ = matmul_hadU_cuda(b_, had_K, K).reshape(b_init_shape)
         if not output:
             had_K, K = get_hadK(in_features)
             W_ = matmul_hadU_cuda(W_, had_K, K)
@@ -147,12 +159,18 @@ def apply_exact_had_to_linear(module, had_dim=-1, output=False):
                 .t()
                 .contiguous()
             )
+            if module.bias is not None:
+                b_ = fast_hadamard_transform.hadamard_transform(b_.reshape(-1, b_.shape[-1] // had_dim, had_dim),
+                                                                scale=1 / math.sqrt(had_dim)).reshape(b_init_shape).contiguous()
+
         else:
             W_ = fast_hadamard_transform.hadamard_transform(
                 W_.reshape(-1, init_shape[1] // had_dim, had_dim),
                 scale=1 / math.sqrt(had_dim),
             ).reshape(init_shape)
     module.weight.data = W_.to(device=dev, dtype=dtype)
+    if module.bias is not None:
+        module.bias.data = b_.to(device=dev, dtype=b_dtype)
 
 
 def is_pow2(n):

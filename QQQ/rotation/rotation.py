@@ -51,7 +51,7 @@ def fuse_layer_norms(model):
     # Fuse the linear operations in Layernorm into the adjacent linear blocks.
     for layer in layers:
         # fuse the input layernorms into the linear layers
-        if model_type == "llama":
+        if model_type in ["llama", "qwen2"]:
             fuse_ln_linear(
                 layer.post_attention_layernorm, [layer.mlp.up_proj, layer.mlp.gate_proj]
             )
@@ -120,11 +120,7 @@ def rotate_attention_inputs(layer, Q, model_type, device) -> None:
 
 def rotate_attention_output(layer, Q, model_type, device) -> None:
     # Rotate output matrix of the self-attention layer.
-    if model_type == "llama":
-        W = layer.self_attn.o_proj
-    else:
-        raise ValueError(f"Unknown model type {model_type}")
-
+    W = layer.self_attn.o_proj
     dtype = W.weight.data.dtype
     W_ = W.weight.data.to(device=device, dtype=torch.float64)
     W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
@@ -135,10 +131,7 @@ def rotate_attention_output(layer, Q, model_type, device) -> None:
 
 def rotate_mlp_input(layer, Q, model_type, device):
     # Rotate the MLP input weights.
-    if model_type == "llama":
-        mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
-    else:
-        raise ValueError(f"Unknown model type {model_type}")
+    mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
     for W in mlp_inputs:
         dtype = W.weight.dtype
         W_ = W.weight.data.to(device=device, dtype=torch.float64)
@@ -147,10 +140,7 @@ def rotate_mlp_input(layer, Q, model_type, device):
 
 def rotate_mlp_output(layer, Q, model_type, device):
     # Rotate the MLP output weights and bias.
-    if model_type == "llama":
-        W = layer.mlp.down_proj
-    else:
-        raise ValueError(f"Unknown model type {model_type}")
+    W = layer.mlp.down_proj
     dtype = W.weight.data.dtype
     W_ = W.weight.data.to(device=device, dtype=torch.float64)
     W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
@@ -170,11 +160,7 @@ def rotate_head(model, Q, model_type, device) -> None:
 
 def rotate_ov_proj(layer, model_type, head_num, head_dim):
     v_proj = layer.self_attn.v_proj
-    if model_type == "llama":
-        o_proj = layer.self_attn.o_proj
-    else:
-        raise ValueError(f"Unknown model type {model_type}")
-
+    o_proj = layer.self_attn.o_proj
     apply_exact_had_to_linear(v_proj, had_dim=head_dim, output=True)
     # apply_exact_had_to_linear(o_proj, had_dim=-1, output=False)
     apply_exact_had_to_linear(o_proj, had_dim=head_dim, output=False)
@@ -199,9 +185,9 @@ def rotate_model(model, args, Q=None):
     free_memory()
     layers = get_transformer_layers(model, model_type=model_type)
     for idx, layer in enumerate(tqdm.tqdm(layers, unit="layer", desc="Rotating")):
-        rotate_attention_inputs(layers[idx], Q, model_type, device)
-        rotate_attention_output(layers[idx], Q, model_type, device)
-        rotate_mlp_input(layers[idx], Q, model_type, device)
-        rotate_mlp_output(layers[idx], Q, model_type, device)
-        rotate_ov_proj(layers[idx], model_type, num_heads, head_dim)
+        rotate_attention_inputs(layer, Q, model_type, device)
+        rotate_attention_output(layer, Q, model_type, device)
+        rotate_mlp_input(layer, Q, model_type, device)
+        rotate_mlp_output(layer, Q, model_type, device)
+        rotate_ov_proj(layer, model_type, num_heads, head_dim)
     return model, Q

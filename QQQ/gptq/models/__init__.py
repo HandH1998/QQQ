@@ -1,8 +1,11 @@
 from .llama import gptq_llama_func, QuantizedLlamaForCausalLM
+from .qwen2 import gptq_qwen2_func, QuantizedQwen2ForCausalLM
 
-_GPTQ_MODEL_FUNC = {"llama": gptq_llama_func}
+_GPTQ_MODEL_FUNC = {"llama": gptq_llama_func,
+                    "qwen2": gptq_qwen2_func}
 
-_QUANTIZED_MODEL_CLASS = {"llama": QuantizedLlamaForCausalLM}
+_QUANTIZED_MODEL_CLASS = {"llama": QuantizedLlamaForCausalLM,
+                          "qwen2": QuantizedQwen2ForCausalLM}
 
 
 def get_gptq_model_func(model_type):

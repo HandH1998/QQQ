@@ -244,9 +244,9 @@ class QuantLinear(nn.Module):
             self.s_channel[:, :] = s.to(self.s_channel.device)
         if linear.bias is not None:
             if self.bias is not None:
-                self.bias[:] = linear.bias.data.to(self.bias.device)
+                self.bias[:] = linear.bias.data.to(self.bias.device).to(torch.half)
             else:
-                self.bias = linear.bias.clone()
+                self.bias = linear.bias.clone().to(torch.half)
 
     # activation int8 quantization
     def dynamic_quant(self, x: torch.Tensor):

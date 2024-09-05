@@ -19,6 +19,7 @@ from accelerate.big_modeling import (
 _MODEL_TYPE = {
     "LlamaForCausalLM": "llama",
     "LLaMAForCausalLM": "llama",
+    "Qwen2ForCausalLM": "qwen2",
 }
 
 
@@ -33,7 +34,6 @@ def build_model_and_tokenizer(
     kwargs = {
         "torch_dtype": str2torch_dtype(dtype),
         "device_map": "auto",
-        "attn_implementation": "eager",
     }
     model = AutoModelForCausalLM.from_pretrained(
         model_path, trust_remote_code=trust_remote_code, **kwargs
@@ -42,7 +42,6 @@ def build_model_and_tokenizer(
 
 
 def get_model_architecture(config):
-    # config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
     architectures = getattr(config, "architectures", [])
     for arch in architectures:
         if arch in _MODEL_TYPE:
@@ -144,32 +143,30 @@ def get_model_config(
 
 
 def get_transformer_layers(model, model_type):
-    if model_type == "llama":
+    if model_type in ["llama", "qwen2"]:
         return [layer for layer in model.model.layers]
     else:
         raise ValueError(f"Unknown model type {model_type}")
 
 
 def get_lm_head(model, model_type):
-    if model_type == "llama":
+    if model_type in ["llama", "qwen2"]:
         return model.lm_head
     else:
         raise ValueError(f"Unknown model type {model_type}")
 
 
 def get_pre_head_layernorm(model, model_type):
-    if model_type == "llama":
+    # NOTE(HandH1998): only support RMSnorm
+    if model_type in ["llama", "qwen2"]:
         pre_head_layernorm = model.model.norm
-        assert isinstance(
-            pre_head_layernorm, transformers.models.llama.modeling_llama.LlamaRMSNorm
-        )
         return pre_head_layernorm
     else:
         raise ValueError(f"Unknown model type {model_type}")
 
 
 def get_embeddings(model, model_type) -> list[torch.nn.Module]:
-    if model_type == "llama":
+    if model_type in ["llama", "qwen2"]:
         return [model.model.embed_tokens]
     else:
         raise ValueError(f"Unknown model type {model_type}")
