@@ -41,7 +41,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
         dtype=dtype,
         device=dev,
     )
-    cache = {"i": 0, "attention_mask": None}
+    cache = {"i": 0, "attention_mask": None, "cache_position": None}
 
     class Catcher(nn.Module):
         def __init__(self, module):
@@ -53,6 +53,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
             cache["i"] += 1
             cache["attention_mask"] = kwargs["attention_mask"]
             cache["position_ids"] = kwargs["position_ids"]
+            cache["cache_position"] = kwargs["cache_position"]
             raise ValueError
 
     layers[0] = Catcher(layers[0])
@@ -72,6 +73,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
     outs = torch.zeros_like(inps)
     attention_mask = cache["attention_mask"]
     position_ids = cache["position_ids"]
+    cache_position = cache["cache_position"]
 
     quantizers = {}
     for i, layer in enumerate(layers):
@@ -82,6 +84,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
         outs = outs.to(cur_device)
         attention_mask = attention_mask.to(cur_device) if attention_mask is not None else None
         position_ids = position_ids.to(cur_device)
+        cache_position = cache_position.to(cur_device) if cache_position is not None else None
 
         full = find_layers(layer)
         sequential = [list(full.keys())]
@@ -115,6 +118,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
                     inps[j].unsqueeze(0),
                     attention_mask=attention_mask,
                     position_ids=position_ids,
+                    cache_position=cache_position,
                 )[0]
             for h in handles:
                 h.remove()
@@ -141,6 +145,7 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
                 inps[j].unsqueeze(0),
                 attention_mask=attention_mask,
                 position_ids=position_ids,
+                cache_position=cache_position,
             )[0]
 
         if force_to_cpu:
