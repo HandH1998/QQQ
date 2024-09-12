@@ -81,7 +81,9 @@ def gptq_qwen2_func(model, dataloader, dev, args, force_to_cpu=False):
         cur_device = layer.input_layernorm.weight.device
         inps = inps.to(cur_device)
         outs = outs.to(cur_device)
-        attention_mask = attention_mask.to(cur_device) if attention_mask is not None else None
+        attention_mask = (
+            attention_mask.to(cur_device) if attention_mask is not None else None
+        )
         position_ids = position_ids.to(cur_device)
 
         full = find_layers(layer)
@@ -290,20 +292,22 @@ class QuantizedQwen2MLP(Qwen2MLP):
         self.act_fn = ACT2FN[config.hidden_act]
 
 
-
 class QuantizedQwen2DecoderLayer(Qwen2DecoderLayer):
-    def __init__(
-        self, config: Qwen2Config, quant_config: dict, layer_idx: int
-    ):
+    def __init__(self, config: Qwen2Config, quant_config: dict, layer_idx: int):
         super(Qwen2DecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
 
-        if config.use_sliding_window and config._attn_implementation != "flash_attention_2":
+        if (
+            config.use_sliding_window
+            and config._attn_implementation != "flash_attention_2"
+        ):
             logger.warning_once(
                 f"Sliding Window Attention is enabled but not implemented for `{config._attn_implementation}`; "
                 "unexpected results may be encountered."
             )
-        self.self_attn = QUANT_QWEN2_ATTENTION_CLASSES[config._attn_implementation](config, quant_config, layer_idx)
+        self.self_attn = QUANT_QWEN2_ATTENTION_CLASSES[config._attn_implementation](
+            config, quant_config, layer_idx
+        )
         self.mlp = QuantizedQwen2MLP(config, quant_config)
         self.input_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = Qwen2RMSNorm(
@@ -312,7 +316,6 @@ class QuantizedQwen2DecoderLayer(Qwen2DecoderLayer):
 
 
 class QuantizedQwen2Model(Qwen2Model):
-
     def __init__(self, config: Qwen2Config, quant_config: dict):
         super(Qwen2Model, self).__init__(config)
         self.padding_idx = config.pad_token_id
@@ -337,7 +340,6 @@ class QuantizedQwen2Model(Qwen2Model):
 
 
 class QuantizedQwen2ForCausalLM(Qwen2ForCausalLM):
-
     def __init__(self, config: Qwen2Config, quant_config: dict):
         super(Qwen2ForCausalLM, self).__init__(config)
         self.model = QuantizedQwen2Model(config, quant_config)
@@ -347,4 +349,3 @@ class QuantizedQwen2ForCausalLM(Qwen2ForCausalLM):
 
         # Initialize weights and apply final processing
         self.post_init()
-

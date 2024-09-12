@@ -8,7 +8,8 @@ Our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM achieve impressive
 Our extensive experiments show that QQQ achieves performance on par with existing state-of-the-art LLM quantization methods while significantly accelerating inference, achieving speed boosts up to **2.24x**, **2.10x**, and **1.25x** compared to FP16, W8A8, and W4A16, respectively.
 
 ## News or Update
-- [2024/08/26] **Update!!!** We have integrated rotation into QQQ to improve quantization results without adding any inference overhead.
+- [2024/09/12] **Update!!!** We supported Qwen2 models.
+- [2024/08/26] We have integrated rotation into QQQ to improve quantization results without adding any inference overhead.
 - [2024/07/31] The QQQ quantization method has been successfully integrated into the **official vLLM**. For more details, please refer to our merged [[PR](https://github.com/vllm-project/vllm/pull/5218)]. 
 - [2024/07/17] We put `quant_config.json` in the entry `quantization_config` of model's `config.json`. 
 - [2024/06/17] We release the QQQ [paper](https://arxiv.org/pdf/2406.09904) on arXiv.
@@ -37,18 +38,25 @@ Model support list:
 | LLaMA-1  | 7B/13B/30B/65B              |
 | LLaMA-2  | 7B/13B/70B                  |
 | LLaMA-3  | 8B/70B                      |
+| Qwen2    | 0.5B/1.5B/7B/72B            |
 
 ## Usage
+You can quickly perform model quantization, model evaluation, and simple model inference using the scripts (`quant_model.sh`, `eval_model.sh` and `test_model.sh`) in the `scripts` directory.
+
 ### Quantize model
-Here is an example for quantizing a LLaMA model with per-channel weight quantization.
+Here is an example for quantizing a model with per-channel weight quantization.
 ```
 python3 examples/quant_model.py \
 --model_path ${model_path} \
 --tokenizer_path ${tokenizer_path} \
---batch_size 8 \
 --dtype float16 \
---quant_config quant_config/llama/w4a8.yaml \ # uses quant_config/llama/w4a8-pergroup.yaml for per-group weigth quantization
---save_path ${save_path}
+--smooth false \
+--rotation true \
+--w_quantizer FixedQuantize \
+--w_group_size -1 \
+--gptq_mse true \
+--gptq_groupsize -1 \
+--save_path ${save_path} \
 ```
 ### Evaluate Model
 Here is an example for evaluating perplexity on WikiText2 and accuracy on some zero-shot tasks.

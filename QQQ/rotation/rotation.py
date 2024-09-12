@@ -167,10 +167,12 @@ def rotate_ov_proj(layer, model_type, head_num, head_dim):
 
 
 @torch.inference_mode()
-def rotate_model(model, args, Q=None):
+def rotate_model(model, rotation_config, args, Q=None):
     device = str2torch_device(args.device)
     Q = (
-        get_orthogonal_matrix(model.config.hidden_size, args.rotate_mode, device)
+        get_orthogonal_matrix(
+            model.config.hidden_size, rotation_config.rotate_mode, device
+        )
         if Q is None
         else Q
     )

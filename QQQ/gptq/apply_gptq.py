@@ -16,9 +16,8 @@ from .qlinear import QuantLinear
 
 
 @torch.no_grad()
-def apply_gptq(model, q_config, args):
-    gptq_config = q_config.gptq
-    gptq_config.seqlen = q_config.max_length
+def apply_gptq(model, gptq_config, args):
+    gptq_config.seqlen = args.max_length
     dataloader, _ = get_loaders(
         gptq_config.dataset,
         nsamples=gptq_config.nsamples,

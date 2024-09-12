@@ -1,12 +1,9 @@
-from .quant_llama import QuantizedLlamaForCausalLM
+from QQQ.smooth.models import QuantizedQwen2ForCausalLM, QuantizedLlamaForCausalLM
 from QQQ.smooth.quantization.observer import ObserverBase
 from QQQ.utils import prepare_for_inference
 
 
 def quantize_model(fp_model, config_quant, args):
-    # config_quant = config.quant
-    config_quant.is_remove_padding = config_quant.get("is_remove_padding", True)
-    config_quant.migrate = config_quant.get("migrate", False)
     fp_model.eval()
     model = eval("Quantized" + str(fp_model.__class__.__name__))(
         fp_model,

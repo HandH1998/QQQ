@@ -105,17 +105,17 @@ def get_eval_dataloader(eval_dataset, training_args):
 
 
 @torch.no_grad()
-def smooth(model, tokenizer, q_config, args):
-    logger.info("the quantization config is {}".format(q_config))
+def smooth(model, tokenizer, smooth_config, args):
+    logger.info("the quantization config is {}".format(smooth_config))
     # get cali data
     logger.info("begin building calibration data!")
-    training_args = make_huggingface_training_args(args.batch_size)
+    training_args = make_huggingface_training_args(smooth_config.batch_size)
     cali_data = prepare_data(
         tokenizer,
-        q_config.calibrate_path,
+        smooth_config.calibrate_path,
         training_args,
-        q_config.calibrate,
-        max_length=q_config.max_length,
+        smooth_config.calibrate,
+        max_length=args.max_length,
     )
     # get trainer
     dataloader = get_eval_dataloader(cali_data, training_args)
@@ -126,10 +126,12 @@ def smooth(model, tokenizer, q_config, args):
     enable_calibration_quantization(model)
     model_type = get_model_architecture(model.config)
     if model_type == "llama":
-        from .quantization import migration_llama as migration
+        from .migration import migration_llama as migration
+    elif model_type == "qwen2":
+        from .migration import migration_qwen2 as migration
     else:
         raise NotImplementedError
-    migration.set_search_class(args.smooth_method)
+    migration.set_search_class(smooth_config.smooth_method)
 
     for name, module in model.named_modules():
         if isinstance(module, QuantizedModule):
@@ -146,11 +148,11 @@ def smooth(model, tokenizer, q_config, args):
     )
 
     # activation clip
-    if q_config.a_qconfig.observer == "QuantileObserver":
+    if smooth_config.a_qconfig.observer == "QuantileObserver":
         from .quantization.token_wise_clipping import token_wise_clipping
 
         disable_all(model)
-        token_wise_clipping(model, fp_input, fp_output, q_config, args.batch_size)
+        token_wise_clipping(model, fp_input, fp_output, smooth_config, args.batch_size)
 
     ed = time.time()
     logger.info("cost {:.4f} time".format(ed - st))

@@ -82,9 +82,13 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
         cur_device = layer.input_layernorm.weight.device
         inps = inps.to(cur_device)
         outs = outs.to(cur_device)
-        attention_mask = attention_mask.to(cur_device) if attention_mask is not None else None
+        attention_mask = (
+            attention_mask.to(cur_device) if attention_mask is not None else None
+        )
         position_ids = position_ids.to(cur_device)
-        cache_position = cache_position.to(cur_device) if cache_position is not None else None
+        cache_position = (
+            cache_position.to(cur_device) if cache_position is not None else None
+        )
 
         full = find_layers(layer)
         sequential = [list(full.keys())]
@@ -230,6 +234,7 @@ class QuantizedLlamaAttention(LlamaAttention):
         )
         self._init_rope()
 
+
 class QuantizedLlamaFlashAttention2(LlamaFlashAttention2, QuantizedLlamaAttention):
     """
     Llama flash attention module. This module inherits from `LlamaAttention` as the weights of the module stays
@@ -263,6 +268,7 @@ QUANT_LLAMA_ATTENTION_CLASSES = {
     "sdpa": QuantizedLlamaSdpaAttention,
 }
 
+
 class QuantizedLlamaMLP(LlamaMLP):
     def __init__(self, config: LlamaConfig, quant_config: dict):
         super(LlamaMLP, self).__init__()
@@ -284,12 +290,12 @@ class QuantizedLlamaMLP(LlamaMLP):
 
 
 class QuantizedLlamaDecoderLayer(LlamaDecoderLayer):
-    def __init__(
-        self, config: LlamaConfig, quant_config: dict, layer_idx: int
-    ):
+    def __init__(self, config: LlamaConfig, quant_config: dict, layer_idx: int):
         super(LlamaDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = QUANT_LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, quant_config=quant_config, layer_idx=layer_idx)
+        self.self_attn = QUANT_LLAMA_ATTENTION_CLASSES[config._attn_implementation](
+            config=config, quant_config=quant_config, layer_idx=layer_idx
+        )
         self.mlp = QuantizedLlamaMLP(config, quant_config)
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(
@@ -318,9 +324,13 @@ class QuantizedLlamaModel(LlamaModel):
         # Register a causal mask to separate causal and padding mask creation. Merging happens in the attention class.
         # NOTE: This is not friendly with TorchScript, ONNX, ExportedProgram serialization for very large `max_position_embeddings`.
         causal_mask = torch.full(
-            (config.max_position_embeddings, config.max_position_embeddings), fill_value=True, dtype=torch.bool
+            (config.max_position_embeddings, config.max_position_embeddings),
+            fill_value=True,
+            dtype=torch.bool,
         )
-        self.register_buffer("causal_mask", torch.triu(causal_mask, diagonal=1), persistent=False)
+        self.register_buffer(
+            "causal_mask", torch.triu(causal_mask, diagonal=1), persistent=False
+        )
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -334,4 +344,3 @@ class QuantizedLlamaForCausalLM(LlamaForCausalLM):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         # Initialize weights and apply final processing
         self.post_init()
-

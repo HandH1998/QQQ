@@ -1,15 +1,12 @@
-import math
 import torch
 import torch.nn as nn
 import logging
-from scipy.optimize import minimize_scalar
-from .fake_quant import QuantizeBase
-from .observer import MinMaxObserver
-from .quant_utils import (
+from ..quantization.observer import MinMaxObserver
+from ..quantization.quant_utils import (
     fake_quantize_per_channel_affine,
     fake_quantize_per_tensor_affine,
 )
-import QQQ.smooth.models.quant_llama as quant_llama
+import QQQ.smooth.models.qwen2 as qwen2
 
 logger = logging.getLogger("QQQ")
 scale_list = []
@@ -17,15 +14,21 @@ search_class = None
 
 
 def set_search_class(smooth_method):
-    class_map = {"os+": Migrator1DRangeSearch, "awq": Migrator1DRangeSearchAWQ}
+    class_map = {
+        "os+": Migrator1DRangeSearch,
+        "awq": Migrator1DRangeSearchAWQ,
+        "sq": Migrator1DRangeSearchSQ,
+    }
     global search_class
     search_class = class_map[smooth_method]
 
 
-def migration(act, weight, a_qconfig, w_qconfig, module_type, extra_dict=None):
+def migration(act, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict=None):
     if search_class is None:
         raise ValueError("search_class need to be set before migration!")
-    migrator = search_class(act, weight, a_qconfig, w_qconfig, module_type, extra_dict)
+    migrator = search_class(
+        act, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict
+    )
     best_scale = migrator()
     scale_list.append(best_scale)
     return best_scale
@@ -33,11 +36,12 @@ def migration(act, weight, a_qconfig, w_qconfig, module_type, extra_dict=None):
 
 class MigratorBase(nn.Module):
     def __init__(
-        self, input, weight, a_qconfig, w_qconfig, module_type, extra_dict=None
+        self, input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict=None
     ):
         super().__init__()
         self.input = input
         self.weight = weight
+        self.bias = bias
         self.a_qconfig = a_qconfig
         self.w_qconfig = w_qconfig
         self.module_type = module_type
@@ -64,7 +68,7 @@ class MigratorBase(nn.Module):
             )
         )
         # calculate output
-        self.output = self.get_output(self.input, self.weight)
+        self.output = self.get_output(self.input, self.weight, self.bias)
         # prepare MinMax Observer for later Quantize
         self.aob = (
             MinMaxObserver(
@@ -81,9 +85,9 @@ class MigratorBase(nn.Module):
             .to(self.dtype)
         )
 
-    def get_output(self, input, weight):
+    def get_output(self, input, weight, bias=None):
         if self.module_type == "qkv":
-            output = self.qkv_function(input, weight)
+            output = self.qkv_function(input, weight, bias)
         elif self.module_type == "o_proj":
             output = self.out_function(input, weight)
         elif self.module_type == "up_and_gate":
@@ -121,10 +125,10 @@ class MigratorBase(nn.Module):
         X_q = X_q.reshape(org_shape)
         return X_q
 
-    def get_qoutput(self, input, weight, clipping_range=None):
+    def get_qoutput(self, input, weight, bias=None, clipping_range=None):
         qinput = self.quantize(input, self.aob, clipping_range)
         qweight = self.quantize(weight, self.wob)
-        return self.get_output(qinput, qweight)
+        return self.get_output(qinput, qweight, bias)
 
     def cac_scale(self, min_range, max_range):
         mx_scale = torch.where(
@@ -164,14 +168,19 @@ class MigratorBase(nn.Module):
     def cac_loss(self, min_range, max_range):
         cur_scale = self.cac_scale(min_range, max_range)
         qoutput = self.get_qoutput(
-            self.input / cur_scale, self.weight * cur_scale, (min_range, max_range)
+            self.input / cur_scale,
+            self.weight * cur_scale,
+            self.bias,
+            (min_range, max_range),
         )
         return self.loss_fx(qoutput, self.output)
 
-    def qkv_function(self, input, weight):
+    def qkv_function(self, input, weight, bias=None):
+        assert bias is not None
         B, N, C = input.shape
         head_dim = self.extra_dict["head_dim"]
         qkv = torch.matmul(input, weight.T)
+        qkv = qkv + bias
         sz_q = self.extra_dict["num_heads"] * head_dim
         sz_kv = self.extra_dict["num_key_value_heads"] * head_dim
         q = (
@@ -189,29 +198,30 @@ class MigratorBase(nn.Module):
             .view(B, N, self.extra_dict["num_key_value_heads"], head_dim)
             .transpose(1, 2)
         )
-
-        kv_seq_len = k.shape[-2]
-        # cos, sin = (
-        #     self.extra_dict["cos_cached"][:, :, :kv_seq_len, ...],
-        #     self.extra_dict["sin_cached"][:, :, :kv_seq_len, ...],
-        # )
         cos, sin = (
             self.extra_dict["cos_cached"],
             self.extra_dict["sin_cached"],
         )
-        q, k = quant_llama.apply_rotary_pos_emb(
+        q, k = qwen2.apply_rotary_pos_emb(
             q, k, cos, sin, self.extra_dict["position_ids"]
         )
-        k = quant_llama.repeat_kv(k, self.extra_dict["num_key_value_groups"])
-        v = quant_llama.repeat_kv(v, self.extra_dict["num_key_value_groups"])
-        attn = (q / math.sqrt(head_dim)) @ k.transpose(-2, -1)
-        attn = attn + self.extra_dict["attention_mask"]
-        attn = torch.max(attn, torch.tensor(torch.finfo(self.dtype).min))
-        attn = attn.softmax(dim=-1, dtype=torch.float32).to(self.dtype)
-        # bs, heads, token, token @ (bs, heads, token, dim)
-        # bs, token, heads, dim
-        # bs, heads, token, dim
-        output = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        k = qwen2.repeat_kv(k, self.extra_dict["num_key_value_groups"])
+        v = qwen2.repeat_kv(v, self.extra_dict["num_key_value_groups"])
+        if q.device.type == "cuda" and self.extra_dict["attention_mask"] is not None:
+            q = q.contiguous()
+            k = k.contiguous()
+            v = v.contiguous()
+
+        output = torch.nn.functional.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=self.extra_dict["attention_mask"],
+            dropout_p=0.0,
+            # The q_len > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case q_len == 1.
+            is_causal=self.extra_dict["attention_mask"] is None and N > 1,
+        )
+        output = output.transpose(1, 2).contiguous().view(B, N, C)
         return output[self.extra_dict["observation_mask"] == 1].to(torch.float32)
 
     def out_function(self, input, weight):
@@ -240,9 +250,11 @@ class MigratorBase(nn.Module):
 
 class Migrator1DRangeSearch(MigratorBase):
     def __init__(
-        self, input, weight, a_qconfig, w_qconfig, module_type, extra_dict=None
+        self, input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict=None
     ):
-        super().__init__(input, weight, a_qconfig, w_qconfig, module_type, extra_dict)
+        super().__init__(
+            input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict
+        )
         self.num = max(100, int(self.amx / 0.5))
 
     def cac_scale_loss(self, mn_range, mx_range):
@@ -285,9 +297,11 @@ class Migrator1DRangeSearch(MigratorBase):
 
 class Migrator1DRangeSearchAWQ(MigratorBase):
     def __init__(
-        self, input, weight, a_qconfig, w_qconfig, module_type, extra_dict=None
+        self, input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict=None
     ):
-        super().__init__(input, weight, a_qconfig, w_qconfig, module_type, extra_dict)
+        super().__init__(
+            input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict
+        )
         self.num = max(100, int(self.amx / 0.5))
         self.x_max = self.get_act_scale(self.input)
 
@@ -360,13 +374,16 @@ class Migrator1DRangeSearchSQ(MigratorBase):
         self,
         input,
         weight,
+        bias,
         a_qconfig,
         w_qconfig,
         module_type,
         extra_dict=None,
         smooth_alpha=0.5,
     ):
-        super().__init__(input, weight, a_qconfig, w_qconfig, module_type, extra_dict)
+        super().__init__(
+            input, weight, bias, a_qconfig, w_qconfig, module_type, extra_dict
+        )
         self.smooth_alpha = smooth_alpha
 
     def get_best_scale(self, scales):

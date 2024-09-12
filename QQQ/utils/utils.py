@@ -7,6 +7,7 @@ from easydict import EasyDict
 import random
 import json
 import gc
+import argparse
 
 
 DTYPE_MAP = {
@@ -77,3 +78,14 @@ def parse_quant_config(config_path):
 def free_memory():
     gc.collect()
     torch.cuda.empty_cache()
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")

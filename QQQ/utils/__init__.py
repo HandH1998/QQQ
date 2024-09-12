@@ -20,5 +20,6 @@ from .utils import (
     save_json,
     parse_quant_config,
     free_memory,
+    str2bool,
 )
 from .eval_utils import update_results, pattern_match

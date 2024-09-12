@@ -160,8 +160,14 @@ def apply_exact_had_to_linear(module, had_dim=-1, output=False):
                 .contiguous()
             )
             if module.bias is not None:
-                b_ = fast_hadamard_transform.hadamard_transform(b_.reshape(-1, b_.shape[-1] // had_dim, had_dim),
-                                                                scale=1 / math.sqrt(had_dim)).reshape(b_init_shape).contiguous()
+                b_ = (
+                    fast_hadamard_transform.hadamard_transform(
+                        b_.reshape(-1, b_.shape[-1] // had_dim, had_dim),
+                        scale=1 / math.sqrt(had_dim),
+                    )
+                    .reshape(b_init_shape)
+                    .contiguous()
+                )
 
         else:
             W_ = fast_hadamard_transform.hadamard_transform(
