@@ -1,4 +1,5 @@
 # we recommend to try this method first for its model accuracy and inference speed
+# `--gptq_mse true` may cause overfitting on calibration dataset, if you get a bad quantization result, try to set it `false`
 # rotation + gptq 
 # activation per-channel quant + weight per-channel quant
 model_path=your_model_path
@@ -14,12 +15,14 @@ python3 examples/quant_model.py \
 --rotation true \
 --w_quantizer FixedQuantize \
 --w_group_size -1 \
+--gptq_dataset wikitext2 \
 --gptq_mse true \
 --gptq_groupsize -1 \
 --save_path ${save_path} \
 &> ${log_name}.log
 
 
+# `--gptq_mse true`` may cause overfitting on calibration dataset, if you get a bad quantization result, try to set it `false`
 # rotation + gptq
 # activation per-channel quant + weight per-group quant + groupsize 128
 model_path=your_model_path
@@ -35,6 +38,7 @@ python3 examples/quant_model.py \
 --rotation true \
 --w_quantizer GroupFixedQuantize \
 --w_group_size 128 \
+--gptq_dataset wikitext2 \
 --gptq_mse true \
 --gptq_groupsize 128 \
 --save_path ${save_path} \
@@ -56,6 +60,7 @@ python3 examples/quant_model.py \
 --rotation false \
 --w_quantizer FixedQuantize \
 --w_group_size -1 \
+--gptq_dataset wikitext2 \
 --gptq_mse false \
 --gptq_groupsize -1 \
 --save_path ${save_path} \
@@ -77,6 +82,7 @@ python3 examples/quant_model.py \
 --rotation false \
 --w_quantizer GroupFixedQuantize \
 --w_group_size 128 \
+--gptq_dataset wikitext2 \
 --gptq_mse false \
 --gptq_groupsize 128 \
 --save_path ${save_path} \

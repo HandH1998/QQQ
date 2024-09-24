@@ -35,13 +35,10 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
     model.model.norm = model.model.norm.to(dev)
     layers[0] = layers[0].to(dev)
 
-    dtype = next(iter(model.parameters())).dtype
-    inps = torch.zeros(
-        (args.nsamples, args.seqlen, model.config.hidden_size),
-        dtype=dtype,
-        device=dev,
-    )
-    cache = {"i": 0, "attention_mask": None, "cache_position": None}
+    inps = []
+    attention_mask = []
+    position_ids = []
+    cache_position = []
 
     class Catcher(nn.Module):
         def __init__(self, module):
@@ -49,11 +46,10 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
             self.module = module
 
         def forward(self, inp, **kwargs):
-            inps[cache["i"]] = inp
-            cache["i"] += 1
-            cache["attention_mask"] = kwargs["attention_mask"]
-            cache["position_ids"] = kwargs["position_ids"]
-            cache["cache_position"] = kwargs["cache_position"]
+            inps.append(inp)
+            attention_mask.append(kwargs["attention_mask"])
+            position_ids.append(kwargs["position_ids"])
+            cache_position.append(kwargs["cache_position"])
             raise ValueError
 
     layers[0] = Catcher(layers[0])
@@ -70,25 +66,24 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
         model.model.norm = model.model.norm.cpu()
         torch.cuda.empty_cache()
 
-    outs = torch.zeros_like(inps)
-    attention_mask = cache["attention_mask"]
-    position_ids = cache["position_ids"]
-    cache_position = cache["cache_position"]
+    outs = [inp.clone() for inp in inps]
 
     quantizers = {}
     for i, layer in enumerate(layers):
         if layer.input_layernorm.weight.device == torch.device("cpu"):
             layer = layer.to(dev)
         cur_device = layer.input_layernorm.weight.device
-        inps = inps.to(cur_device)
-        outs = outs.to(cur_device)
-        attention_mask = (
-            attention_mask.to(cur_device) if attention_mask is not None else None
-        )
-        position_ids = position_ids.to(cur_device)
-        cache_position = (
-            cache_position.to(cur_device) if cache_position is not None else None
-        )
+        inps = [inp.to(cur_device) for inp in inps]
+        outs = [out.to(cur_device) for out in outs]
+        attention_mask = [
+            att_mask.to(cur_device) if att_mask is not None else None
+            for att_mask in attention_mask
+        ]
+        position_ids = [pos_ids.to(cur_device) for pos_ids in position_ids]
+        cache_position = [
+            cache_pos.to(cur_device) if cache_pos is not None else None
+            for cache_pos in cache_position
+        ]
 
         full = find_layers(layer)
         sequential = [list(full.keys())]
@@ -119,10 +114,10 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
                 handles.append(subset[name].register_forward_hook(add_batch(name)))
             for j in range(args.nsamples):
                 outs[j] = layer(
-                    inps[j].unsqueeze(0),
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    cache_position=cache_position,
+                    inps[j],
+                    attention_mask=attention_mask[j],
+                    position_ids=position_ids[j],
+                    cache_position=cache_position[j],
                 )[0]
             for h in handles:
                 h.remove()
@@ -146,10 +141,10 @@ def gptq_llama_func(model, dataloader, dev, args, force_to_cpu=False):
 
         for j in range(args.nsamples):
             outs[j] = layer(
-                inps[j].unsqueeze(0),
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                cache_position=cache_position,
+                inps[j],
+                attention_mask=attention_mask[j],
+                position_ids=position_ids[j],
+                cache_position=cache_position[j],
             )[0]
 
         if force_to_cpu:

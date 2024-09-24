@@ -54,6 +54,7 @@ python3 examples/quant_model.py \
 --rotation true \
 --w_quantizer FixedQuantize \
 --w_group_size -1 \
+--gptq_dataset wikitext2 \
 --gptq_mse true \
 --gptq_groupsize -1 \
 --save_path ${save_path} \

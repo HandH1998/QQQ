@@ -51,7 +51,7 @@ def eval_model(model, tokenizer, args):
             _, testloader = get_loaders(
                 task,
                 seed=0,
-                model=args.tokenizer_path,
+                tokenizer_path=args.tokenizer_path,
                 seqlen=max_length,
             )
             if "c4" in task:

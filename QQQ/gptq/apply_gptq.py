@@ -22,8 +22,9 @@ def apply_gptq(model, gptq_config, args):
         gptq_config.dataset,
         nsamples=gptq_config.nsamples,
         seed=args.seed,
-        model=args.tokenizer_path,
+        tokenizer_path=args.tokenizer_path,
         seqlen=gptq_config.seqlen,
+        custom_data_path=gptq_config.custom_dataset,
     )
     model_type = get_model_architecture(model.config)
     gptq_func = get_gptq_model_func(model_type)

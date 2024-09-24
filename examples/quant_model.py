@@ -169,13 +169,23 @@ def parse_gptq_args(args):
     parser = argparse.ArgumentParser(
         description="GPTQ Configuration Parser", add_help=False
     )
-
     parser.add_argument(
         "--gptq_dataset",
         dest="dataset",
         type=str,
-        default="wikitext2",
-        help="Dataset for GPTQ",
+        default="",
+        choices=["wikitext2", "pile", "ptb", "new_ptb", "c4", "mix"],
+        help="Calibration Dataset for GPTQ. If you want to use your own dataset, this should be the default value `"
+        "`",
+    )
+
+    parser.add_argument(
+        "--gptq_custom_dataset",
+        dest="custom_dataset",
+        type=str,
+        default="",
+        help="Calibration Dataset for GPTQ. It should be your own dataset path. If you want to use the public dataset, this should be `"
+        "`",
     )
     parser.add_argument(
         "--gptq_sym",
