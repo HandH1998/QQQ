@@ -266,7 +266,12 @@ def parse_args():
     parser.add_argument("--rotation", type=str2bool, default=True)
     parser.add_argument("--max_length", dest="max_length", type=int, default=2048)
     parser.add_argument("--save_path", type=str, default="results")
-    parser.add_argument("--dtype", type=str, default="float16")
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        default="float16",
+        choices=["float16", "bfloat16", "float32"],
+    )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--seed", type=int, default=0)
     args, remaining_args = parser.parse_known_args()

@@ -13,7 +13,7 @@ import argparse
 DTYPE_MAP = {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
-    "float": torch.float,
+    "float32": torch.float32,
 }
 
 

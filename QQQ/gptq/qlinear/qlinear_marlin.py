@@ -178,7 +178,11 @@ class QuantLinear(nn.Module):
         if self.group_size != self.infeatures:
             assert s_extra is not None, "s_extra is needed"
         if linear.weight.dtype != torch.half:
-            raise ValueError("Only `torch.half` weights are supported.")
+            logger.warning(
+                f"""The dtype of weights is {linear.weight.dtype}, while our w4a8 GEMM's output is torch.half.
+                If you can ensure your GEMM results don't overflow torch.half, it will still function correctly.
+                Otherwise, it will yield incorrect results."""
+            )
         s = scales.t()
         w = linear.weight.data.t()
         if self.group_size != self.infeatures:
