@@ -8,7 +8,8 @@ Our specialized per-channel W4A8 GEMM and per-group W4A8 GEMM achieve impressive
 Our extensive experiments show that QQQ achieves performance on par with existing state-of-the-art LLM quantization methods while significantly accelerating inference, achieving speed boosts up to **2.24x**, **2.10x**, and **1.25x** compared to FP16, W8A8, and W4A16, respectively.
 
 ## News or Update
-- [2024/09/12] **Update!!!** We supported Qwen2 models.
+- [2024/09/26] **update!!!** Refactor smooth calibration code and support custom calibration dataset.
+- [2024/09/12] We supported Qwen2 models.
 - [2024/08/26] We have integrated rotation into QQQ to improve quantization results without adding any inference overhead.
 - [2024/07/31] The QQQ quantization method has been successfully integrated into the **official vLLM**. For more details, please refer to our merged [[PR](https://github.com/vllm-project/vllm/pull/5218)]. 
 - [2024/07/17] We put `quant_config.json` in the entry `quantization_config` of model's `config.json`. 
@@ -52,9 +53,10 @@ python3 examples/quant_model.py \
 --dtype float16 \
 --smooth false \
 --rotation true \
+--dataset wikitext2 \
+--nsamples 128 \
 --w_quantizer FixedQuantize \
 --w_group_size -1 \
---gptq_dataset wikitext2 \
 --gptq_mse true \
 --gptq_groupsize -1 \
 --save_path ${save_path} \

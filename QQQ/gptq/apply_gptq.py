@@ -17,14 +17,14 @@ from .qlinear import QuantLinear
 
 @torch.no_grad()
 def apply_gptq(model, gptq_config, args):
-    gptq_config.seqlen = args.max_length
+    gptq_config.nsamples = args.nsamples
     dataloader, _ = get_loaders(
-        gptq_config.dataset,
-        nsamples=gptq_config.nsamples,
+        args.dataset,
+        nsamples=args.nsamples,
         seed=args.seed,
         tokenizer_path=args.tokenizer_path,
-        seqlen=gptq_config.seqlen,
-        custom_data_path=gptq_config.custom_dataset,
+        seqlen=args.max_length,
+        custom_data_path=args.custom_dataset,
     )
     model_type = get_model_architecture(model.config)
     gptq_func = get_gptq_model_func(model_type)

@@ -124,24 +124,12 @@ def parse_smooth_args(args):
     parser = argparse.ArgumentParser(
         description="Smooth Configuration Parser", add_help=False
     )
-
     # Calibration
     parser.add_argument(
-        "--calibrate",
-        dest="calibrate",
+        "--batch_size",
         type=int,
-        default=128,
-        help="Number of calibration samples",
-    )
-    parser.add_argument(
-        "--calibrate_path",
-        dest="calibrate_path",
-        type=str,
-        default="/mnt/dolphinfs/hdd_pool/docker/share/1/zhangying/datasets/pile/val.jsonl.zst",
-        help="Path to calibration data",
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=8, help="Batch size of calibration inference"
+        default=8,
+        help="Batch size of smooth calibration inference",
     )
 
     # Padding removal
@@ -168,24 +156,6 @@ def parse_smooth_args(args):
 def parse_gptq_args(args):
     parser = argparse.ArgumentParser(
         description="GPTQ Configuration Parser", add_help=False
-    )
-    parser.add_argument(
-        "--gptq_dataset",
-        dest="dataset",
-        type=str,
-        default="",
-        choices=["wikitext2", "pile", "ptb", "new_ptb", "c4", "mix"],
-        help="Calibration Dataset for GPTQ. If you want to use your own dataset, this should be the default value `"
-        "`",
-    )
-
-    parser.add_argument(
-        "--gptq_custom_dataset",
-        dest="custom_dataset",
-        type=str,
-        default="",
-        help="Calibration Dataset for GPTQ. It should be your own dataset path. If you want to use the public dataset, this should be `"
-        "`",
     )
     parser.add_argument(
         "--gptq_sym",
@@ -219,13 +189,7 @@ def parse_gptq_args(args):
         default=0.01,
         help="Percentage damping for GPTQ",
     )
-    parser.add_argument(
-        "--gptq_nsamples",
-        dest="nsamples",
-        type=int,
-        default=128,
-        help="Number of samples for GPTQ",
-    )
+
     parser.add_argument(
         "--gptq_wbits",
         dest="wbits",
@@ -274,6 +238,26 @@ def parse_args():
     )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--seed", type=int, default=0)
+    # Calibration
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="",
+        choices=["wikitext2", "pile", "ptb", "new_ptb", "c4", "mix"],
+        help="Calibration Dataset. If you want to use your own dataset, this should be the default value",
+    )
+    parser.add_argument(
+        "--custom_dataset",
+        type=str,
+        default="",
+        help="Custom Calibration Dataset. It should be your own dataset path. If you want to use the public dataset, this should be the default value",
+    )
+    parser.add_argument(
+        "--nsamples",
+        type=int,
+        default=128,
+        help="Number of calibration samples",
+    )
     args, remaining_args = parser.parse_known_args()
     smooth_args, remaining_args = parse_smooth_args(remaining_args)
     gptq_args, remaining_args = parse_gptq_args(remaining_args)
