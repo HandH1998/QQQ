@@ -821,29 +821,128 @@ __global__ void Marlin(
 
 
 
-// 8 warps are a good choice since every SM has 4 schedulers and having more than 1 warp per schedule allows some more
-// latency hiding. At the same time, we want relatively few warps to have many registers per warp and small tiles.
-const int THREADS = 256;
-const int STAGES = 4; // 4 pipeline stages fit into shared memory
 
-#define CALL_IF(THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, GROUP_BLOCKS) \
-  else if ( \
-    thread_m_blocks == THREAD_M_BLOCKS && thread_n_blocks == THREAD_N_BLOCKS && thread_k_blocks == THREAD_K_BLOCKS && \
-    group_blocks == GROUP_BLOCKS \
-  ) { \
-    cudaFuncSetAttribute( \
-      Marlin<THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS>, \
-      cudaFuncAttributeMaxDynamicSharedMemorySize, \
-      max_shared_mem \
-    ); \
-    Marlin< \
-      THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS \
-    ><<<blocks, THREADS, max_shared_mem, stream>>>( \
-      A_ptr, B_ptr, C_ptr, D_ptr, s1_ptr, s2_ptr, s3_ptr, \
-      prob_m, prob_n, prob_k, \
-      locks \
-    ); \
+// 8 warps are a good choice since every SM has 4 schedulers and having more
+// than 1 warp per schedule allows some more latency hiding. At the same time,
+// we want relatively few warps to have many registers per warp and small tiles.
+const int USER_THREADS = 256; // Note: This is only used with user-provided thread_k/n
+const int STAGES = 4; // 4 pipeline stages fit into shared memory
+// const int SHARED_MEM = 96 * 1024; // max shared memory on compute capability 8.6 (< 8.0)
+
+static constexpr int min_thread_n = 64;
+static constexpr int min_thread_k = 64;
+
+static constexpr int tile_size = 16;
+static constexpr int max_par = 16;
+
+static constexpr int pack_factor_4bit =
+    8;  // We have 8 4-bit vals inside a 32 bit
+
+typedef struct {
+  int thread_k;
+  int thread_n;
+  int num_threads;
+} thread_config_t;
+
+thread_config_t small_batch_thread_configs[] = {
+    // Ordered by priority
+
+    // thread_k, thread_n, num_threads
+    {128, 128, 256},  // Default
+    {128, 64, 128},   // Reduce N 2X, same K
+    {64, 256, 256},   // Reduce K 2X, increase N 2X
+    {64, 128, 128},   // Reduce K 2X, same N
+};
+
+thread_config_t large_batch_thread_configs[] = {
+    // Ordered by priority
+
+    // thread_k, thread_n, num_threads
+    {64, 256, 256},   // Default
+    {128, 128, 256},  // Reduce N 2X, increase K 2X
+    {64, 128, 128},   // Reduce N 2X, same K
+    {128, 64, 128},   // Reduce N 4X, increase K 2X
+};
+
+bool is_valid_config(thread_config_t const& th_config, int prob_m, int prob_n,
+                     int prob_k) {
+  // Sanity
+  if (th_config.thread_k == -1 || th_config.thread_n == -1 ||
+      th_config.num_threads == -1) {
+    return false;
   }
+
+  // Verify K/N are divisible by thread K/N
+  if (prob_k % th_config.thread_k != 0 || prob_n % th_config.thread_n != 0) {
+    return false;
+  }
+
+  // thread_k can be only 128 or 64 (because it must be less than groupsize
+  // which is 128)
+  if (th_config.thread_k != 128 && th_config.thread_k != 64) {
+    return false;
+  }
+
+  // Verify min for thread K/N
+  if (th_config.thread_n < min_thread_n || th_config.thread_k < min_thread_k) {
+    return false;
+  }
+
+  // num_threads must be at least 128 (= 4 warps)
+  if (th_config.num_threads < 128) {
+    return false;
+  }
+
+  return true;
+}
+
+thread_config_t determine_thread_config(int prob_m, int prob_n, int prob_k) {
+  if (prob_m <= 16) {
+    for (auto th_config : small_batch_thread_configs) {
+      if (is_valid_config(th_config, prob_m, prob_n, prob_k)) {
+        return th_config;
+      }
+    }
+
+  } else {
+    for (auto th_config : large_batch_thread_configs) {
+      if (is_valid_config(th_config, prob_m, prob_n, prob_k)) {
+        return th_config;
+      }
+    }
+  }
+
+  return thread_config_t{-1, -1, -1};
+}
+
+#define __CALL_IF(THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS,               \
+                  GROUP_BLOCKS, NUM_THREADS)                                       \
+  else if (thread_m_blocks == THREAD_M_BLOCKS &&                                   \
+           thread_n_blocks == THREAD_N_BLOCKS &&                                   \
+           thread_k_blocks == THREAD_K_BLOCKS &&                                   \
+           group_blocks == GROUP_BLOCKS && num_threads == NUM_THREADS) {           \
+    cudaFuncSetAttribute(Marlin<NUM_THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS,     \
+                                THREAD_K_BLOCKS, STAGES, GROUP_BLOCKS>,            \
+                         cudaFuncAttributeMaxDynamicSharedMemorySize,              \
+                         max_shared_mem);                                          \
+    Marlin<NUM_THREADS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS,         \
+           STAGES, GROUP_BLOCKS>                                                   \
+        <<<blocks, NUM_THREADS, max_shared_mem, stream>>>(                         \
+            A_ptr, B_ptr, C_ptr, D_ptr, s1_ptr, s2_ptr, s3_ptr,                    \
+            prob_m, prob_n, prob_k, locks);                                        \
+  }
+
+#define CALL_IF(N_BLOCKS, K_BLOCKS, NUM_THREADS)    \
+  __CALL_IF(1, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
+  __CALL_IF(1, N_BLOCKS, K_BLOCKS, 8, NUM_THREADS)  \
+  __CALL_IF(1, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
+  __CALL_IF(1, N_BLOCKS, K_BLOCKS, 8, NUM_THREADS)  \
+  __CALL_IF(2, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
+  __CALL_IF(2, N_BLOCKS, K_BLOCKS, 8, NUM_THREADS)  \
+  __CALL_IF(3, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
+  __CALL_IF(3, N_BLOCKS, K_BLOCKS, 8, NUM_THREADS)  \
+  __CALL_IF(4, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
+  __CALL_IF(4, N_BLOCKS, K_BLOCKS, 8, NUM_THREADS)
 
 const int ERR_PROB_SHAPE = 1;
 const int ERR_KERN_SHAPE = 2;
@@ -853,9 +952,9 @@ int qqq_cuda(
   const void* B,
         void* C, // int32 reduce buffer
         void* D, // half
-        void* s1,
-        void* s2,
-        void* s3,
+  const void* s1,
+  const void* s2,
+  const void* s3,
   int prob_m,
   int prob_n,
   int prob_k,
@@ -877,24 +976,29 @@ int qqq_cuda(
   int max_shared_mem = 0;
   cudaDeviceGetAttribute(&max_shared_mem,
                          cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
-  if (thread_k == -1 || thread_n == -1) {
-    if (prob_m <= 16) {
-      // For small batchizes, better partioning is slightly more important than better compute utilization
-      thread_k = 128;
-      thread_n = 128;
-    } else {
-      thread_k = 64;
-      thread_n = 256;
-    }
-  }
 
+  // Set thread config
+  thread_config_t th_config;
+  if (thread_k != -1 && thread_n != -1) {
+    // User-defined config
+    th_config = thread_config_t{thread_k, thread_n, USER_THREADS};
+  } else {
+    // Auto config
+    th_config = determine_thread_config(prob_m, prob_n, prob_k);
+  }
+  int group_blocks = (groupsize == -1) ? -1 : groupsize / 16;
+  if (!is_valid_config(th_config, prob_m, prob_n, prob_k) || (group_blocks != -1 && prob_k % group_blocks != 0))
+    return ERR_PROB_SHAPE;
+  
+  int num_threads = th_config.num_threads;
+  thread_k = th_config.thread_k;
+  thread_n = th_config.thread_n;
   int thread_k_blocks = thread_k / 16;
   int thread_n_blocks = thread_n / 16;
-  int group_blocks = (groupsize == -1) ? -1 : groupsize / 16;
   int blocks = sms;
 
-  if (prob_n % thread_n != 0 || prob_k % thread_k != 0 || (group_blocks != -1 && prob_k % group_blocks != 0))
-    return ERR_PROB_SHAPE;
+  if (groupsize == -1)
+    assert(s3 == nullptr);
   if (prob_m == 0 || prob_n == 0 || prob_k == 0)
     return 0;
   
@@ -926,16 +1030,10 @@ int qqq_cuda(
     // For compilation speed, we only define the kernel configurations that have seemed useful (in terms of performance)
     // in our testing, however many more are, in principle, possible.
     if (false) {}
-    CALL_IF(1,  8,  8, -1)
-    CALL_IF(1,  8,  8,  8)
-    CALL_IF(1, 16,  4, -1)
-    CALL_IF(1, 16,  4,  8)
-    CALL_IF(2, 16,  4, -1)
-    CALL_IF(2, 16,  4,  8)
-    CALL_IF(3, 16,  4, -1)
-    CALL_IF(3, 16,  4,  8)
-    CALL_IF(4, 16,  4, -1)
-    CALL_IF(4, 16,  4,  8)
+    CALL_IF(8, 8, 256)
+    CALL_IF(16, 4, 256)
+    CALL_IF(8, 4, 128)
+    CALL_IF(4, 8, 128)
     else
       ret = ERR_KERN_SHAPE;
 

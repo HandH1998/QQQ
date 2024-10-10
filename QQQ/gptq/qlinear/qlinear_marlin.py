@@ -30,13 +30,13 @@ def mul(
 ):
     """INT8xINT4 multiply based on Marlin kernel; can be used within `torch.compile`.
     @A: `torch.int8` input matrix of shape `(m, k)` in standard row-major layout
-    @B: `torch.int` weight matrix of original shape `(k, n)` in the specified format; see `Layer.pack()`
-    @C: `torch.int` reduce buffer of shape `(max_par * 64, n)` in standard row-major layout
+    @B: `torch.int32` weight matrix of original shape `(k, n)` in the specified format; see `Layer.pack()`
+    @C: `torch.int32` reduce buffer of shape `(max_par * 64, n)` in standard row-major layout
     @D: `torch.half` out matrix of shape `(m, n)` in standard row-major layout
-    @s1: `torch.float` activation per-token quantization scales of shape `(m, 1)`
-    @s2: `torch.float` weight per-channel quantization scales of shape `(1, n)`
+    @s1: `torch.float32` activation per-token quantization scales of shape `(m, 1)`
+    @s2: `torch.float32` weight per-channel quantization scales of shape `(1, n)`
     @s3: `torch.half` weight per-group quantization scales of shape `(m / groupsize, n)`, it should be empty when group_size != -1
-    @workspace: `torch.int` tensor with at least `n / 128 * max_par` entries that are all zero
+    @workspace: `torch.int32` tensor with at least `n / 128 * max_par` entries that are all zero
     @thread_k: `k` size of a thread_tile in `B` (can usually be left as auto -1)
     @thread_n: `n` size of a thread_tile in `B` (can usually be left as auto -1)
     @sms: number of SMs to use for the kernel (can usually be left as auto -1)
@@ -62,22 +62,31 @@ class QuantLinear(nn.Module):
                 f'Can not use Marlin int4*fp16 kernel with a device of compute capability {torch.cuda.get_device_capability()}, the minimum compute capability is 8.0 for Marlin kernel. Please do not use `use_marlin=True`, or please upgrade your GPU ("The more you buy, the more you save." - Taiwanese proverb).'
             )
 
-        if infeatures % 128 != 0 or outfeatures % 256 != 0:
+        # (thread_k, thread_n)
+        self.thread_config = [(64, 256), (128, 128), (128, 64), (64, 128)]
+        if not any(
+            [
+                infeatures % thread_k == 0 and outfeatures % thread_n == 0
+                for thread_k, thread_n in self.thread_config
+            ]
+        ):
             raise ValueError(
-                "`infeatures` must be divisible by 128 and `outfeatures` by 256."
+                "Not supported `infeatures`: {} and `outfeatures`: {}.".format(
+                    infeatures, outfeatures
+                )
             )
         if bits not in [4]:
             raise NotImplementedError("Only 4 bits are supported.")
         if group_size not in [-1, 128] and group_size != infeatures:
             raise ValueError("Only group_size -1 and 128 are supported.")
-        if infeatures % group_size != 0:
-            raise ValueError("`infeatures` must be divisible by `group_size`.")
         if trainable:
             raise NotImplementedError("Marlin does not support train.")
 
         self.infeatures = infeatures
         self.outfeatures = outfeatures
         self.group_size = group_size if group_size != -1 else infeatures
+        if self.infeatures % self.group_size != 0:
+            raise ValueError("`infeatures` must be divisible by `group_size`.")
         self.bits = bits
         self.tile = 16
         if self.group_size != self.infeatures:
@@ -88,14 +97,14 @@ class QuantLinear(nn.Module):
         self.register_buffer(
             "B",
             torch.empty(
-                (self.infeatures // 16, self.outfeatures * 16 // 8), dtype=torch.int
+                (self.infeatures // 16, self.outfeatures * 16 // 8), dtype=torch.int32
             ),
         )
         self.register_buffer(
             "s_channel",
             torch.empty(
                 (1, self.outfeatures),
-                dtype=torch.float,
+                dtype=torch.float32,
             ),
         )
         if self.group_size != self.infeatures:
@@ -114,7 +123,7 @@ class QuantLinear(nn.Module):
         # 128 is currently the minimum `tile_n`, hence it gives the maximum workspace size; 16 is the default `max_par`
         self.register_buffer(
             "workspace",
-            torch.zeros(self.outfeatures // 128 * 16, dtype=torch.int),
+            torch.zeros(self.outfeatures // 128 * 16, dtype=torch.int32),
             persistent=False,
         )
         self.register_buffer(
@@ -132,7 +141,7 @@ class QuantLinear(nn.Module):
     def _apply(self, fn):
         super()._apply(fn)
         self.s_group = self.s_group.to(torch.half)
-        self.s_channel = self.s_channel.to(torch.float)
+        self.s_channel = self.s_channel.to(torch.float32)
         return self
 
     def _get_perms(self):
@@ -197,7 +206,7 @@ class QuantLinear(nn.Module):
         else:
             w = torch.clamp(w, -self.maxq, self.maxq)
         if self.group_size != self.infeatures:
-            s_extra = s_extra.reshape(1, -1).to(dtype=torch.float)
+            s_extra = s_extra.reshape(1, -1).to(dtype=torch.float32)
             s = (s.reshape(-1, self.outfeatures) / s_extra).to(dtype=torch.half)
 
             w = w.reshape((self.group_size, -1, self.outfeatures))
@@ -213,7 +222,7 @@ class QuantLinear(nn.Module):
             s = (
                 (s / (2 ** (8 - self.bits)))
                 .reshape((-1, len(self._scale_perm_single)))[:, self._scale_perm_single]
-                .to(dtype=torch.float)
+                .to(dtype=torch.float32)
             )
         s = s.reshape((-1, self.outfeatures)).contiguous()
         w = w.reshape(
@@ -254,7 +263,7 @@ class QuantLinear(nn.Module):
 
     # activation int8 quantization
     def dynamic_quant(self, x: torch.Tensor):
-        quant_scale = x.abs().max(dim=-1, keepdim=True)[0].div(127.0).to(torch.float)
+        quant_scale = x.abs().max(dim=-1, keepdim=True)[0].div(127.0).to(torch.float32)
         x = (x / quant_scale).round().clamp(-128, 127).to(torch.int8)
         return x, quant_scale
 
