@@ -170,3 +170,10 @@ def get_embeddings(model, model_type) -> list[torch.nn.Module]:
         return [model.model.embed_tokens]
     else:
         raise ValueError(f"Unknown model type {model_type}")
+
+def remove_empty_parameters(model):
+    state_dict = {}
+    for k, v in model.state_dict().items():
+        if v.numel() > 0:
+            state_dict[k] = v
+    return state_dict

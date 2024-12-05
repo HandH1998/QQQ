@@ -11,6 +11,7 @@ from QQQ.utils import (
     prepare_for_inference,
     free_memory,
     str2bool,
+    remove_empty_parameters,
 )
 
 logger = logging.getLogger("QQQ")
@@ -326,7 +327,8 @@ def main():
     }
 
     # save quantized model
-    model.save_pretrained(args.save_path)
+    state_dict = remove_empty_parameters(model)
+    model.save_pretrained(args.save_path, state_dict=state_dict)
     tokenizer.save_pretrained(args.save_path)
     logger.info(
         "Quant Finished! The quantized model is saved at {}.".format(args.save_path)

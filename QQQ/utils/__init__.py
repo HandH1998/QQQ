@@ -11,6 +11,7 @@ from .model_utils import (
     get_pre_head_layernorm,
     get_lm_head,
     get_embeddings,
+    remove_empty_parameters,
 )
 from .utils import (
     str2torch_dtype,
