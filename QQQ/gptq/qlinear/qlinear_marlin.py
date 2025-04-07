@@ -269,7 +269,9 @@ class QuantLinear(nn.Module):
 
     def forward(self, A):
         out_shape = A.shape[:-1] + (self.outfeatures,)
-        A = A.reshape(-1, A.shape[-1]).half()
+        # Note: Currently support fp16&bf16 activations
+        # A = A.reshape(-1, A.shape[-1]).half()
+        A = A.reshape(-1, A.shape[-1])
         quant_A, s1 = self.dynamic_quant(A)
         D = torch.empty(A.shape[0], self.outfeatures, dtype=A.dtype, device=A.device)
         mul(
