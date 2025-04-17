@@ -328,6 +328,9 @@ class QuantizedQwen2Model(Qwen2Model):
         self._attn_implementation = config._attn_implementation
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
+        # added for transformer>=4.45.0
+        self.rotary_emb = Qwen2RotaryEmbedding(config=config)
+
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
