@@ -148,3 +148,13 @@ If you find QQQ useful or relevant to your research, please cite our paper:
 }
 
 ```
+
+
+### Install
+
+```bash
+uv venv --python 3.12 --seed
+source venv/bin/activate
+uv pip install torch
+uv pip install -v -e . --no-build-isolation
+```

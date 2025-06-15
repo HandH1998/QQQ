@@ -7,3 +7,4 @@ tests
 results
 QQQ.egg-info
 build
+.venv
