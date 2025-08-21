@@ -1,6 +1,7 @@
 """ PyTorch QuantizedLLaMA model."""
 import warnings
 import logging
+from types import SimpleNamespace
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -40,6 +41,14 @@ class QuantizedQwen2MLP(Qwen2MLP, QuantizedModule):
         QuantizedModule.__init__(self, backend=backend)
         self.w_qconfig = w_qconfig
         self.a_qconfig = a_qconfig
+        
+        if hasattr(org_module, 'config'):
+            self.config = org_module.config
+        else:
+            self.config = SimpleNamespace()
+            self.config.hidden_size = org_module.hidden_size
+            self.config.intermediate_size = org_module.intermediate_size
+        
         self.config = org_module.config
         self.qinput = qinput
         self.hidden_size = org_module.hidden_size
@@ -128,7 +137,8 @@ class QuantizedQwen2Attention(Qwen2Attention, QuantizedModule):
         QuantizedModule.__init__(self, backend=backend)
         self.w_qconfig = w_qconfig
         self.a_qconfig = a_qconfig
-        self.config = org_module.config
+        if hasattr(org_module, 'config'):
+            self.config = org_module.config        
         self.qinput = qinput
         self.layer_idx = org_module.layer_idx
 
@@ -178,6 +188,8 @@ class QuantizedQwen2Attention(Qwen2Attention, QuantizedModule):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         assert not output_attentions
@@ -209,11 +221,12 @@ class QuantizedQwen2Attention(Qwen2Attention, QuantizedModule):
                 "num_heads": self.num_heads,
                 "num_key_value_heads": self.num_key_value_heads,
                 "num_key_value_groups": self.num_key_value_groups,
-                "cos_cached": self.rotary_emb.cos_cached,
-                "sin_cached": self.rotary_emb.sin_cached,
+                "rotary_emb": self.rotary_emb,               
                 "head_dim": self.head_dim,
                 "position_ids": position_ids,
                 "attention_mask": attention_mask,
+                "cache_position": cache_position,
+                "position_embeddings": position_embeddings,
                 "observation_mask": observation_mask,
             }
             # update scale
@@ -249,10 +262,10 @@ class QuantizedQwen2Attention(Qwen2Attention, QuantizedModule):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, position_ids)
 
         query_states, key_states = apply_rotary_pos_emb(
-            query_states, key_states, cos, sin, position_ids
+            query_states, key_states, cos, sin
         )
 
         if past_key_value is not None:
@@ -355,6 +368,8 @@ class QuantizedQwen2DecoderLayer(Qwen2DecoderLayer, QuantizedModule):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         **kwargs,
     ) -> Tuple[
         torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
@@ -432,6 +447,7 @@ class QuantizedQwen2Model(Qwen2Model, QuantizedModule):
         self._attn_implementation = org_module._attn_implementation
         # NOTE(HandH1998): Qwen2 fp16 is abnormal for `eager` attention, here we only support `sdpa`
         assert self._attn_implementation == "sdpa"
+        self.rotary_emb = org_module.rotary_emb
         self.norm = org_module.norm
         self.gradient_checkpointing = False
 
@@ -447,6 +463,7 @@ class QuantizedQwen2Model(Qwen2Model, QuantizedModule):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         observation_mask: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = (
             output_attentions
@@ -543,6 +560,8 @@ class QuantizedQwen2Model(Qwen2Model, QuantizedModule):
 
         hidden_states = inputs_embeds
 
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -559,6 +578,8 @@ class QuantizedQwen2Model(Qwen2Model, QuantizedModule):
                 past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
                 observation_mask=observation_mask,
             )
 
@@ -640,6 +661,7 @@ class QuantizedQwen2ForCausalLM(Qwen2ForCausalLM, QuantizedModule):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -698,6 +720,7 @@ class QuantizedQwen2ForCausalLM(Qwen2ForCausalLM, QuantizedModule):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             observation_mask=observation_mask,
+            cache_position=cache_position,
         )
 
         hidden_states = outputs[0]
